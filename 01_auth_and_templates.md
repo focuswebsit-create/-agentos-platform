@@ -1,0 +1,3 @@
+# Claude Code prompt — P1 then P2, sequential PRs
+
+Read all blueprint docs and current implementation log. Implement **P1 only**: Supabase Auth, org creation/switch, RBAC, invitation, initial tenant data RLS+isolation negative tests, and responsive customer app routes. Do not add paid billing yet. Run CI, create PR, STOP. After owner review/merge, use a NEW PR for **P2 only**: published catalog of curated templates, versioned agent draft/publish and onboarding demo. Keep template definitions immutable, installed copies tenant-scoped, and non-working integrations clearly disabled. Do not silently deploy or start P3.

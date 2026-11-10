@@ -1,0 +1,3 @@
+# Claude Code prompt — P6 and P7 in separate reviewed PRs
+
+Read all commercial docs. P6 only: platform-admin boundary + MFA requirement and safe dashboard based on real/seed-labeled data, organization, subscription, usage, incidents, audit, support metadata, safe suspension. Admin must not read customer prompts/files by default. Verify non-admin denial and all admin mutations audited. PR and STOP. Later P7 only after review: full staging security/E2E, billing sandbox smoke tests, privacy/legal launch checklist, backups, incident runbook, accessible RTL mobile regression, UAT with design partners. Explicit owner approval required before any production deployment or live charge. Report what remains blocked and STOP.
