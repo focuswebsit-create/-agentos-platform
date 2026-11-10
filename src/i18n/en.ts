@@ -1,0 +1,458 @@
+import type { Dictionary } from "./types";
+
+/** English (LTR) dictionary — infrastructure for a later English locale. Same shape as `he`. */
+export const en: Dictionary = {
+  meta: {
+    title: "AgentOS — Your digital team",
+    description:
+      "A platform to create, manage and run AI agents and agent teams for businesses — no code, with control over permissions and spend.",
+  },
+  common: {
+    brand: "AgentOS",
+    skipToContent: "Skip to main content",
+    demo: "Demo",
+    preview: "Preview",
+    illustration: "Illustration",
+    noData: "No data",
+    emptyValue: "—",
+    comingInPhase: "Planned for phase {phase}",
+    openMenu: "Open menu",
+    closeMenu: "Close menu",
+    theme: {
+      toggle: "Toggle theme",
+      light: "Light mode",
+      dark: "Dark mode",
+    },
+    language: {
+      current: "English",
+      englishSoon: "English — coming soon",
+    },
+    backToSite: "Back to site",
+    devEnvironment: "Development environment — no customer data",
+  },
+  marketingNav: {
+    product: "Product",
+    templates: "Templates",
+    pricing: "Pricing",
+    security: "Security",
+    login: "Log in",
+    getStarted: "Get started",
+    appPreview: "App preview",
+  },
+  signupClosed: "Sign-up opens in the next development phase. Accounts cannot be created yet.",
+  home: {
+    hero: {
+      eyebrow: "In development · early preview",
+      title: "Your digital team. Built for your business.",
+      subtitle:
+        "Create AI agents, connect them to tasks and workflows, and control results, permissions and spend — from one place.",
+      primaryCta: "Get started",
+      secondaryCta: "See the demo",
+      microcopy: "No coding required. You stay in control.",
+    },
+    diagram: {
+      title: "Example agent team",
+      caption: "Visual illustration only — not a real run",
+      input: "Your brief",
+      output: "Output for your approval",
+      approval: "Human approval before any external action",
+      agents: [
+        { name: "Researcher", role: "Gathers facts and sources" },
+        { name: "Writer", role: "Drafts the content" },
+        { name: "Reviewer", role: "Checks and returns feedback" },
+      ],
+    },
+    pillars: {
+      title: "Why AgentOS",
+      items: [
+        {
+          title: "No code",
+          body: "Build an agent from a template or from scratch: role, instructions, model and tools — in a simple UI.",
+        },
+        {
+          title: "Full control",
+          body: "Every sensitive action needs explicit approval of its exact arguments. No hidden actions behind a button.",
+        },
+        {
+          title: "Predictable spend",
+          body: "A transparent monthly AI budget per organization, safe stop at the cap, and no surprise overage charges.",
+        },
+      ],
+    },
+    how: {
+      title: "How it will work",
+      steps: [
+        { title: "Pick a template", body: "Start from a ready use case or a blank agent." },
+        { title: "Configure", body: "Role, instructions, model, tools and limits." },
+        { title: "Test", body: "Run on a sample and see every step and its cost." },
+        { title: "Operate", body: "Publish a version and approve sensitive actions." },
+      ],
+    },
+    templates: {
+      title: "Use-case templates",
+      subtitle:
+        "Horizontal starting points for any business. Templates become operational in later phases.",
+      agents: "{n} agents",
+      singleAgent: "1 agent",
+      noIntegration: "Works without an external connection",
+      approvalRequired: "External sending needs a verified connection and approval",
+      items: {
+        "research-writer-reviewer": {
+          name: "Research → Write → Review",
+          body: "Content research, drafting and quality review — fits many businesses.",
+        },
+        "inquiry-triage": {
+          name: "Inquiry triage → Draft reply",
+          body: "Classify customer inquiries and propose a reply for your approval.",
+        },
+        "document-qa": {
+          name: "Document Q&A",
+          body: "Upload PDF/TXT, summarize and answer with references to source passages.",
+        },
+        "marketing-kit": {
+          name: "Marketing content kit",
+          body: "From brief to ideas and a publishing plan. No automatic distribution.",
+        },
+      },
+    },
+    trust: {
+      title: "Transparency first",
+      body: "We are still in development, so there are no testimonials, usage numbers or logos here. They will appear only when real and approved.",
+    },
+    cta: {
+      title: "Want to be among the first?",
+      body: "The product is being built in stages. Sign-up opens after the identity and security phase is complete.",
+      button: "See planned pricing",
+    },
+  },
+  pricing: {
+    title: "Planned pricing",
+    subtitle: "Three monthly plans. Unlimited agent definitions — with run, usage and tool quotas.",
+    plannedBanner:
+      "These are planned product prices under validation. Billing is not active and no subscription can be purchased yet.",
+    perMonth: "/ month",
+    vatNote: "Excluding VAT",
+    highlighted: "Recommended",
+    cta: "Purchase not available yet",
+    planNames: { starter: "Starter", business: "Business", pro: "Pro" },
+    planTaglines: {
+      starter: "For solo businesses",
+      business: "For small and mid-size teams",
+      pro: "For organizations with many workflows",
+    },
+    limits: {
+      agents: "Unlimited agent definitions",
+      seats: "{n} seats",
+      singleSeat: "1 seat",
+      teams: "{n} active teams",
+      singleTeam: "1 active team",
+      unlimitedTeams: "Unlimited defined teams",
+      concurrency: "{n} concurrent runs",
+      singleConcurrency: "1 concurrent run",
+      budget: "Monthly AI budget: up to {amount} provider cost",
+      knowledgeBases: "{n} knowledge bases",
+      singleKnowledgeBase: "1 knowledge base",
+    },
+    budgetExplainer: {
+      title: "What is the AI budget?",
+      body: "A monthly ceiling on the direct cost of AI model calls, measured in USD — not a count of tasks or credits. When the cap is reached, runs stop safely. No overage charges without consent. Local-currency amounts are estimates based on a recorded FX rate.",
+    },
+    faq: {
+      title: "FAQ",
+      items: [
+        {
+          q: "Can I buy a subscription now?",
+          a: "No. Billing will be connected only after sandbox testing, signature verification and business/legal approval.",
+        },
+        {
+          q: "Will there be a trial?",
+          a: "A limited trial is planned. Exact terms are still being validated and will be published before launch.",
+        },
+        {
+          q: "What happens if I cancel?",
+          a: "As planned, cancellation takes effect at the end of the billing period and access is kept until then. Data is not deleted immediately.",
+        },
+        {
+          q: "Is there an annual plan?",
+          a: "The first launch plans monthly plans only.",
+        },
+      ],
+    },
+  },
+  footer: {
+    tagline: "A platform for supervised AI agents, for businesses in every industry.",
+    status: "Product in development. No sign-up, billing or AI provider connection at this stage.",
+    legalSoon: "Terms of use and privacy policy will be published before sign-up opens.",
+    rights: "© {year} AgentOS",
+  },
+  app: {
+    workspace: "Example workspace",
+    demoBanner:
+      "Demo environment — no account connected and all data is empty. Nothing here actually executes.",
+    nav: {
+      dashboard: "Overview",
+      agents: "Agents",
+      teams: "Teams",
+      workflows: "Workflows",
+      templates: "Templates",
+      runs: "Runs",
+      knowledge: "Knowledge",
+      integrations: "Integrations",
+      approvals: "Approvals",
+      analytics: "Analytics",
+      billing: "Usage & Billing",
+      team: "Team",
+      settings: "Settings",
+    },
+    navGroups: {
+      build: "Build",
+      operate: "Operate",
+      account: "Account",
+    },
+    overview: {
+      title: "Overview",
+      subtitle: "A snapshot of your workspace.",
+      cards: {
+        agents: "Agents",
+        runs: "Runs this month",
+        spend: "Estimated AI cost",
+        approvals: "Pending approvals",
+      },
+      cardsNote: "No data — no organization connected",
+      quickStart: {
+        title: "First steps",
+        items: [
+          "Create an organization and account (phase P1)",
+          "Pick a template or a blank agent (phase P2)",
+          "Run a test with a real AI provider (phase P3)",
+        ],
+      },
+      studioCard: {
+        title: "Agent Studio",
+        body: "Peek at how the agent builder will look.",
+        button: "Open the preview",
+      },
+    },
+    sections: {
+      agents: {
+        title: "Agents",
+        subtitle: "All agents in your organization, their status and published version.",
+        emptyTitle: "No agents yet",
+        emptyBody: "Your agents will appear here. Real agent creation arrives in phase P2.",
+        cta: "Agent Studio preview",
+      },
+      teams: {
+        title: "Teams",
+        subtitle: "Combine several agents with an ordered handoff.",
+        emptyTitle: "No teams yet",
+        emptyBody: "Agent teams (e.g. research → write → review) arrive in phase P4.",
+      },
+      workflows: {
+        title: "Workflows",
+        subtitle: "Ordered steps with an assigned agent per step.",
+        emptyTitle: "No workflows yet",
+        emptyBody: "A basic workflow editor arrives in phase P4.",
+      },
+      templates: {
+        title: "Templates",
+        subtitle: "Ready-to-use starting points.",
+        emptyTitle: "Template library not active yet",
+        emptyBody: "Installing a template as an organization copy arrives in phase P2.",
+      },
+      runs: {
+        title: "Runs",
+        subtitle: "Track runs: queued, running, waiting approval, completed, failed, cancelled.",
+        emptyTitle: "No runs yet",
+        emptyBody:
+          "No AI provider is configured in this environment, so nothing can run. Real runs arrive in phase P3.",
+      },
+      knowledge: {
+        title: "Knowledge",
+        subtitle: "Documents your agents can use — isolated per organization.",
+        emptyTitle: "No documents yet",
+        emptyBody: "PDF/TXT upload and org-isolated search arrive in phase P4.",
+      },
+      integrations: {
+        title: "Integrations",
+        subtitle: "Connections to external services, always with explicit approval.",
+        emptyTitle: "No integrations connected",
+        emptyBody:
+          "No integration is active. A first approval-gated connector arrives in phase P4.",
+      },
+      approvals: {
+        title: "Approvals",
+        subtitle: "Sensitive actions waiting for your decision.",
+        emptyTitle: "Nothing waiting for approval",
+        emptyBody:
+          "An approval screen with exact arguments, expiry and rejection arrives in phase P4.",
+      },
+      analytics: {
+        title: "Analytics",
+        subtitle: "Usage, quality and cost over time.",
+        emptyTitle: "No data to show",
+        emptyBody: "Data will be shown only from real events, starting in phase P6.",
+      },
+      billing: {
+        title: "Usage & Billing",
+        subtitle: "Plan, AI budget, invoices and subscription management.",
+        emptyTitle: "Billing unavailable in this environment",
+        emptyBody:
+          "No payment provider is configured. There is no active subscription and no charges. Billing is built in phase P5, sandbox only.",
+        cta: "See planned pricing",
+      },
+      team: {
+        title: "Team",
+        subtitle: "Invite users and manage role-based permissions.",
+        emptyTitle: "No team members",
+        emptyBody: "User management, invitations and permissions arrive in phase P1.",
+      },
+      settings: {
+        title: "Settings",
+        subtitle: "Organization details, language, timezone and data retention.",
+        emptyTitle: "No organization connected",
+        emptyBody: "Organization settings become available after sign-in, in phase P1.",
+      },
+    },
+  },
+  studio: {
+    title: "Agent Studio",
+    subtitle: "How you will configure an agent: identity, model, instructions, tools and limits.",
+    banner:
+      "UI preview only. Nothing is saved, published or sent to a model. No AI provider is configured.",
+    identity: {
+      title: "Agent identity",
+      name: "Agent name",
+      namePlaceholder: "e.g. Content writer",
+      role: "Role",
+      rolePlaceholder: "e.g. Drafts social posts",
+    },
+    model: {
+      title: "Model",
+      provider: "Provider",
+      model: "Model",
+      notConfigured: "Not configured",
+      setupNotice: "No model provider is configured in this environment, so running is disabled.",
+    },
+    instructions: {
+      title: "Instructions",
+      label: "Agent instructions",
+      placeholder: "Describe what the agent does, its style, and what it must never do…",
+      help: "Instructions never contain keys or secrets. They are versioned and immutable after publishing.",
+      count: "{n} characters",
+    },
+    tools: {
+      title: "Tools & permissions",
+      readOnly: "Read-only",
+      requiresApproval: "Requires approval",
+      plannedNote: "Tools become operational in phase {phase}",
+      names: {
+        "knowledge.search": "Knowledge search",
+        "text.summarize": "Text summary",
+        "email.send_draft": "Send email draft",
+      },
+    },
+    limits: {
+      title: "Limits",
+      maxSteps: "Max steps per run",
+      maxSpend: "Max cost per run (USD)",
+      help: "Limits are enforced server-side on every run, not only in the UI.",
+    },
+    validation: {
+      title: "Validation",
+      valid: "Configuration is valid against the schema.",
+      invalid: "Please complete:",
+      fields: {
+        name: "Agent name",
+        role: "Role",
+        instructions: "Instructions (at least 10 characters)",
+        provider: "Provider",
+        model: "Model",
+        tools: "Tools",
+        knowledgeBaseIds: "Knowledge bases",
+        maxSteps: "Max steps",
+        maxSpendUsdMicros: "Max cost",
+      },
+    },
+    actions: {
+      saveDraft: "Save draft",
+      publish: "Publish version",
+      disabledReason: "Saving and publishing arrive in phase P2.",
+    },
+    test: {
+      title: "Test",
+      inputLabel: "Test input",
+      inputPlaceholder: "Paste sample text…",
+      run: "Run",
+      disabledReason: "Run disabled — no model provider configured. Real runs arrive in phase P3.",
+      estimate: "Estimated cost",
+      outputEmpty: "No output. Nothing was run.",
+    },
+  },
+  admin: {
+    title: "Super Admin",
+    badge: "Platform admin",
+    lockedBanner:
+      "UI shell only. No access to customer data and no admin actions. Capabilities are locked until authentication, MFA and authorization exist (P1/P6).",
+    nav: {
+      overview: "Overview",
+      organizations: "Customers",
+      subscriptions: "Subscriptions",
+      usage: "Usage",
+      costs: "Costs",
+      alerts: "Alerts",
+      settings: "System settings",
+    },
+    overview: {
+      title: "Platform overview",
+      subtitle: "Metrics will be computed only from real billing and usage events.",
+      cards: {
+        mrr: "Paid MRR",
+        paidOrgs: "Paid organizations",
+        apiCost: "Estimated API cost",
+        incidents: "Open incidents",
+      },
+    },
+    sections: {
+      organizations: {
+        title: "Customers",
+        subtitle: "Organizations, plan, status and active seats.",
+        actions: ["Suspend organization", "Export metadata"],
+      },
+      subscriptions: {
+        title: "Subscriptions",
+        subtitle: "Subscription state, renewals, failed payments and reconciliation drift.",
+        actions: ["Plan override", "Run reconciliation"],
+      },
+      usage: {
+        title: "Usage",
+        subtitle: "Spend per organization, provider and model; budget reservations.",
+        actions: ["Throttle organization"],
+      },
+      costs: {
+        title: "Costs",
+        subtitle: "Provider, infrastructure and payment fees versus collected revenue.",
+        actions: ["Export report"],
+      },
+      alerts: {
+        title: "Alerts",
+        subtitle: "Incidents, failed runs and suspicious usage.",
+        actions: ["Tool kill switch"],
+      },
+      settings: {
+        title: "System settings",
+        subtitle:
+          "Currency and tax, provider and plan mapping, policies. Secrets live in a secret manager only.",
+        actions: ["Edit plans", "Feature flags"],
+      },
+    },
+    emptyTitle: "No data",
+    emptyBody: "No data. Sample data is never shown as if it were production data.",
+    actionsTitle: "Actions (locked)",
+    actionLocked: "Locked until P6",
+  },
+  notFound: {
+    title: "Page not found",
+    body: "The link may be wrong or the page does not exist yet.",
+    home: "Go home",
+  },
+};
