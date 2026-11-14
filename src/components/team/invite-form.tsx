@@ -5,18 +5,10 @@ import { useRouter } from "next/navigation";
 import { CheckIcon, CopyIcon, InfoIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
-import { CSRF_COOKIE, CSRF_HEADER } from "@/modules/tenancy/cookie";
 import type { OrgRole } from "@/modules/tenancy";
 import type { Dictionary } from "@/i18n";
 import { FormAlert, Spinner, TextField } from "@/components/auth/form-parts";
-
-function readCsrfToken(): string {
-  const match = document.cookie
-    .split(";")
-    .map((p) => p.trim())
-    .find((p) => p.startsWith(`${CSRF_COOKIE}=`));
-  return match ? decodeURIComponent(match.slice(CSRF_COOKIE.length + 1)) : "";
-}
+import { sendJson } from "@/components/auth/api-client";
 
 export function InviteForm({
   t,
@@ -45,27 +37,18 @@ export function InviteForm({
     setInviteUrl(null);
     setPending(true);
 
-    const res = await fetch("/api/invitations", {
-      method: "POST",
-      headers: { "content-type": "application/json", [CSRF_HEADER]: readCsrfToken() },
-      body: JSON.stringify({ email, role, orgId }),
-    });
+    const res = await sendJson("/api/invitations", "POST", { email, role, orgId });
     setPending(false);
 
-    const payload = (await res.json().catch(() => null)) as {
-      inviteUrl?: string;
-      code?: string;
-    } | null;
-
     if (!res.ok) {
-      if (payload?.code === "SEAT_LIMIT_REACHED") setError(t.team.seatsFull);
-      else if (payload?.code === "VALIDATION_FAILED") setError(t.auth.errors.emailInvalid);
-      else if (payload?.code === "ORG_ACCESS_DENIED") setError(t.team.cannotActOnSelf);
+      if (res.code === "SEAT_LIMIT_REACHED") setError(t.team.seatsFull);
+      else if (res.code === "VALIDATION_FAILED") setError(t.auth.errors.emailInvalid);
+      else if (res.code === "ORG_ACCESS_DENIED") setError(t.team.cannotActOnSelf);
       else setError(t.auth.errors.generic);
       return;
     }
 
-    setInviteUrl(payload?.inviteUrl ?? null);
+    setInviteUrl((res.data as { inviteUrl?: string } | null)?.inviteUrl ?? null);
     setEmail("");
     router.refresh();
   }

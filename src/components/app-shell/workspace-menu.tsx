@@ -4,18 +4,10 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Building2Icon, CheckIcon, ChevronsUpDownIcon, LogOutIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { CSRF_COOKIE, CSRF_HEADER } from "@/modules/tenancy/cookie";
 import { cn } from "@/lib/utils";
+import { sendJson } from "@/components/auth/api-client";
 
 export type WorkspaceOption = { orgId: string; orgName: string; role: string };
-
-function readCsrfToken(): string {
-  const match = document.cookie
-    .split(";")
-    .map((p) => p.trim())
-    .find((p) => p.startsWith(`${CSRF_COOKIE}=`));
-  return match ? decodeURIComponent(match.slice(CSRF_COOKIE.length + 1)) : "";
-}
 
 /**
  * Workspace switcher and sign-out.
@@ -59,11 +51,7 @@ export function WorkspaceMenu({
   async function switchTo(orgId: string) {
     if (orgId === current.orgId) return setOpen(false);
     setPending(orgId);
-    const res = await fetch("/api/orgs/switch", {
-      method: "POST",
-      headers: { "content-type": "application/json", [CSRF_HEADER]: readCsrfToken() },
-      body: JSON.stringify({ orgId }),
-    });
+    const res = await sendJson("/api/orgs/switch", "POST", { orgId });
     setPending(null);
     setOpen(false);
     if (res.ok) {

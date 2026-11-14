@@ -13,6 +13,12 @@ concurrency:
   cancel-in-progress: true
 
 # No secrets are used anywhere in this workflow. Third-party actions are pinned to commit SHAs.
+#
+# Supabase credentials are deliberately absent. The E2E suite therefore also
+# proves that a deployment with no identity service configured degrades safely:
+# the public site serves, the auth screens say so plainly, private routes
+# redirect to sign-in and /admin answers 404 — never a 500, which would both
+# break the site and advertise the misconfiguration.
 jobs:
   quality:
     name: Lint · Typecheck · Unit tests · Build · E2E smoke

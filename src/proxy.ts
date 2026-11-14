@@ -38,6 +38,9 @@ export async function proxy(request: NextRequest) {
 
   const isApp = pathname === "/app" || pathname.startsWith("/app/");
   const isAdmin = pathname === "/admin" || pathname.startsWith("/admin/");
+  // Onboarding is outside /app (the /app layout redirects here when the user
+  // has no organisation, so nesting it would loop), but it is just as private.
+  const isOnboarding = pathname === "/onboarding";
 
   if (isAdmin) {
     // Never confirm that the admin surface exists to someone who cannot use it.
@@ -53,13 +56,13 @@ export async function proxy(request: NextRequest) {
     return response;
   }
 
-  if (isApp && !userId) {
+  if ((isApp || isOnboarding) && !userId) {
     const redirect = new URL(SIGN_IN_PATH, request.url);
     redirect.searchParams.set("next", safeReturnPath(pathname, search));
     return carryAuthCookies(response, NextResponse.redirect(redirect));
   }
 
-  if (isApp) {
+  if (isApp || isOnboarding) {
     response.headers.set("Cache-Control", "no-store");
   }
 

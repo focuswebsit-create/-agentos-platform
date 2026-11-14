@@ -29,11 +29,25 @@ export function ResetPasswordForm({ t }: { t: Dictionary }) {
   const [pending, setPending] = React.useState(false);
 
   React.useEffect(() => {
-    const supabase = createSupabaseBrowserClient();
-    supabase.auth.getClaims().then(({ data }) => {
-      setHasSession(Boolean(data?.claims?.sub));
-      setChecking(false);
-    });
+    let cancelled = false;
+    // A rejected promise inside an effect is an unhandled rejection, which
+    // takes the whole tree down and shows the browser's "page couldn't load"
+    // screen. A network failure here must degrade to "no recovery session",
+    // which renders the "ask for a new link" message instead.
+    (async () => {
+      try {
+        const supabase = createSupabaseBrowserClient();
+        const { data } = await supabase.auth.getClaims();
+        if (!cancelled) setHasSession(Boolean(data?.claims?.sub));
+      } catch {
+        if (!cancelled) setHasSession(false);
+      } finally {
+        if (!cancelled) setChecking(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {

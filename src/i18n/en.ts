@@ -507,6 +507,10 @@ export const en: Dictionary = {
       success: "Password updated. You can sign in now.",
       linkInvalid: "This reset link is invalid or has expired. Request a new one.",
     },
+    unavailable: {
+      title: "Sign-in is unavailable",
+      body: "The identity service is not configured in this environment. The public site works as usual.",
+    },
     signOut: "Sign out",
     errors: {
       emailInvalid: "That email address is not valid.",

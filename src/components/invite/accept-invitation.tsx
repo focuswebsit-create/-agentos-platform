@@ -3,17 +3,9 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { CSRF_COOKIE, CSRF_HEADER } from "@/modules/tenancy/cookie";
 import type { Dictionary } from "@/i18n";
 import { FormAlert, Spinner } from "@/components/auth/form-parts";
-
-function readCsrfToken(): string {
-  const match = document.cookie
-    .split(";")
-    .map((p) => p.trim())
-    .find((p) => p.startsWith(`${CSRF_COOKIE}=`));
-  return match ? decodeURIComponent(match.slice(CSRF_COOKIE.length + 1)) : "";
-}
+import { NETWORK_ERROR_STATUS, sendJson } from "@/components/auth/api-client";
 
 export function AcceptInvitation({ t, token }: { t: Dictionary; token: string }) {
   const router = useRouter();
@@ -24,21 +16,17 @@ export function AcceptInvitation({ t, token }: { t: Dictionary; token: string })
     setPending(true);
     setError(null);
 
-    const res = await fetch("/api/invitations/accept", {
-      method: "POST",
-      headers: { "content-type": "application/json", [CSRF_HEADER]: readCsrfToken() },
-      body: JSON.stringify({ token }),
-    });
+    const res = await sendJson("/api/invitations/accept", "POST", { token });
 
     if (!res.ok) {
       setPending(false);
-      const payload = (await res.json().catch(() => null)) as { code?: string } | null;
       // The server returns one generic code for every invitation failure, so
       // this screen cannot reveal whether a token exists, has expired, or was
       // addressed to somebody else.
-      if (payload?.code === "EMAIL_NOT_VERIFIED") setError(t.invite.verifyFirst);
-      else if (payload?.code === "SEAT_LIMIT_REACHED") setError(t.team.seatsFull);
-      else if (payload?.code === "AUTH_REQUIRED") setError(t.invite.signInFirst);
+      if (res.status === NETWORK_ERROR_STATUS) setError(t.auth.errors.generic);
+      else if (res.code === "EMAIL_NOT_VERIFIED") setError(t.invite.verifyFirst);
+      else if (res.code === "SEAT_LIMIT_REACHED") setError(t.team.seatsFull);
+      else if (res.code === "AUTH_REQUIRED") setError(t.invite.signInFirst);
       else setError(t.invite.invalid);
       return;
     }

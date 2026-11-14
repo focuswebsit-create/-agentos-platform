@@ -3,16 +3,8 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { CSRF_COOKIE, CSRF_HEADER } from "@/modules/tenancy/cookie";
 import type { Dictionary } from "@/i18n";
-
-function readCsrfToken(): string {
-  const match = document.cookie
-    .split(";")
-    .map((p) => p.trim())
-    .find((p) => p.startsWith(`${CSRF_COOKIE}=`));
-  return match ? decodeURIComponent(match.slice(CSRF_COOKIE.length + 1)) : "";
-}
+import { sendJson } from "@/components/auth/api-client";
 
 export function RevokeInvitation({
   t,
@@ -28,11 +20,7 @@ export function RevokeInvitation({
 
   async function revoke() {
     setPending(true);
-    await fetch(`/api/invitations/${invitationId}/revoke`, {
-      method: "POST",
-      headers: { "content-type": "application/json", [CSRF_HEADER]: readCsrfToken() },
-      body: JSON.stringify({ orgId }),
-    });
+    await sendJson(`/api/invitations/${invitationId}/revoke`, "POST", { orgId });
     setPending(false);
     router.refresh();
   }

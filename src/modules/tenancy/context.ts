@@ -1,6 +1,7 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { createSupabaseServerClient } from "@/modules/supabase/server";
+import { isSupabaseConfigured } from "@/config/env";
 import { ACTIVE_ORG_COOKIE } from "./cookie";
 import type { OrgRole } from "./permissions";
 
@@ -59,6 +60,12 @@ export async function listMemberships(): Promise<{
   userId: string;
   memberships: Membership[];
 } | null> {
+  // An unconfigured identity service means nobody is authenticated. Returning
+  // null makes callers treat this exactly like a signed-out visitor, instead
+  // of throwing a 500 that both breaks the page and advertises the
+  // misconfiguration.
+  if (!isSupabaseConfigured()) return null;
+
   const supabase = await createSupabaseServerClient();
 
   const { data: claims, error: claimsError } = await supabase.auth.getClaims();

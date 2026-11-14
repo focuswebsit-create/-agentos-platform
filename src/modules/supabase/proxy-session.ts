@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { getSupabasePublicEnv } from "@/config/env";
+import { getSupabasePublicEnv, isSupabaseConfigured } from "@/config/env";
 
 export type ProxySession = {
   /**
@@ -26,6 +26,14 @@ export type ProxySession = {
  */
 export async function updateSession(request: NextRequest): Promise<ProxySession> {
   let response = NextResponse.next({ request });
+
+  // No Supabase configuration means nobody can be authenticated. Reporting
+  // "no session" makes every protected route behave exactly as it does for an
+  // anonymous visitor, instead of surfacing a 500 that both breaks the site
+  // and advertises the misconfiguration.
+  if (!isSupabaseConfigured()) {
+    return { response, userId: null };
+  }
 
   const { url, publishableKey } = getSupabasePublicEnv();
 

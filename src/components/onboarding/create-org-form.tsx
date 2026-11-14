@@ -4,17 +4,9 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { CreateOrgSchema, slugifyOrgName } from "@/modules/contracts";
-import { CSRF_COOKIE, CSRF_HEADER } from "@/modules/tenancy/cookie";
 import type { Dictionary } from "@/i18n";
 import { FormAlert, Spinner, TextField } from "@/components/auth/form-parts";
-
-function readCsrfToken(): string {
-  const match = document.cookie
-    .split(";")
-    .map((p) => p.trim())
-    .find((p) => p.startsWith(`${CSRF_COOKIE}=`));
-  return match ? decodeURIComponent(match.slice(CSRF_COOKIE.length + 1)) : "";
-}
+import { sendJson } from "@/components/auth/api-client";
 
 export function CreateOrgForm({ t }: { t: Dictionary }) {
   const router = useRouter();
@@ -46,18 +38,12 @@ export function CreateOrgForm({ t }: { t: Dictionary }) {
     setErrors({});
     setPending(true);
 
-    const res = await fetch("/api/orgs", {
-      method: "POST",
-      headers: { "content-type": "application/json", [CSRF_HEADER]: readCsrfToken() },
-      body: JSON.stringify(parsed.data),
-    });
+    const res = await sendJson("/api/orgs", "POST", parsed.data);
 
     if (!res.ok) {
       setPending(false);
-      const payload = (await res.json().catch(() => null)) as { code?: string } | null;
-      if (payload?.code === "ORG_SLUG_TAKEN") setErrors({ slug: t.onboarding.slugTaken });
-      else if (payload?.code === "EMAIL_NOT_VERIFIED")
-        setFormError(t.auth.errors.emailNotConfirmed);
+      if (res.code === "ORG_SLUG_TAKEN") setErrors({ slug: t.onboarding.slugTaken });
+      else if (res.code === "EMAIL_NOT_VERIFIED") setFormError(t.auth.errors.emailNotConfirmed);
       else setFormError(t.auth.errors.generic);
       return;
     }

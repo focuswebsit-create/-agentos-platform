@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Logo } from "@/components/shared/logo";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
+import { isSupabaseConfigured } from "@/config/env";
 import { getDictionary } from "@/i18n";
 
 const t = getDictionary();
@@ -35,7 +36,18 @@ export default function AuthLayout({ children }: LayoutProps<"/">) {
         id="main"
         className="relative z-10 mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-md flex-col justify-center px-4 pb-16 sm:px-6"
       >
-        {children}
+        {/* A sign-in form that cannot reach the identity service is worse than
+            no form: it accepts a password and fails silently. Say so instead. */}
+        {isSupabaseConfigured() ? (
+          children
+        ) : (
+          <div className="space-y-3 rounded-2xl border border-warning/30 bg-warning/5 p-6 text-center">
+            <h1 className="text-lg font-semibold">{t.auth.unavailable.title}</h1>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              {t.auth.unavailable.body}
+            </p>
+          </div>
+        )}
       </main>
     </div>
   );

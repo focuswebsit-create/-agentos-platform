@@ -4,17 +4,9 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
-import { CSRF_COOKIE, CSRF_HEADER } from "@/modules/tenancy/cookie";
 import type { OrgRole } from "@/modules/tenancy";
 import type { Dictionary } from "@/i18n";
-
-function readCsrfToken(): string {
-  const match = document.cookie
-    .split(";")
-    .map((p) => p.trim())
-    .find((p) => p.startsWith(`${CSRF_COOKIE}=`));
-  return match ? decodeURIComponent(match.slice(CSRF_COOKIE.length + 1)) : "";
-}
+import { sendJson } from "@/components/auth/api-client";
 
 /**
  * Role change and removal.
@@ -47,17 +39,10 @@ export function MemberActions({
   async function changeRole(next: string) {
     if (next === targetRole) return;
     setPending("role");
-    const res = await fetch(`/api/memberships/${targetUserId}`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json", [CSRF_HEADER]: readCsrfToken() },
-      body: JSON.stringify({ orgId, role: next }),
-    });
+    const res = await sendJson(`/api/memberships/${targetUserId}`, "PATCH", { orgId, role: next });
     setPending(null);
     if (!res.ok) {
-      const payload = (await res.json().catch(() => null)) as { code?: string } | null;
-      onError(
-        payload?.code === "ORG_ACCESS_DENIED" ? t.team.cannotActOnSelf : t.auth.errors.generic,
-      );
+      onError(res.code === "ORG_ACCESS_DENIED" ? t.team.cannotActOnSelf : t.auth.errors.generic);
       return;
     }
     router.refresh();
@@ -65,15 +50,10 @@ export function MemberActions({
 
   async function remove() {
     setPending("remove");
-    const res = await fetch(`/api/memberships/${targetUserId}`, {
-      method: "DELETE",
-      headers: { "content-type": "application/json", [CSRF_HEADER]: readCsrfToken() },
-      body: JSON.stringify({ orgId }),
-    });
+    const res = await sendJson(`/api/memberships/${targetUserId}`, "DELETE", { orgId });
     setPending(null);
     if (!res.ok) {
-      const payload = (await res.json().catch(() => null)) as { code?: string } | null;
-      onError(payload?.code === "ORG_ACCESS_DENIED" ? t.team.lastOwner : t.auth.errors.generic);
+      onError(res.code === "ORG_ACCESS_DENIED" ? t.team.lastOwner : t.auth.errors.generic);
       return;
     }
     router.refresh();

@@ -75,3 +75,23 @@ export function getSupabasePublicEnv(
   }
   return result.data;
 }
+
+/**
+ * Whether Supabase is configured, without throwing.
+ *
+ * A deployment missing these variables must degrade safely, not answer 500 on
+ * every authenticated route. A 500 on /admin is worse than useless: it
+ * confirms the route exists and advertises a misconfiguration. Callers use
+ * this to fall back to "no session", which makes /app redirect to sign-in and
+ * /admin answer 404 — the same answers an anonymous visitor gets.
+ */
+export function isSupabaseConfigured(
+  source: Record<string, string | undefined> = process.env,
+): boolean {
+  try {
+    getSupabasePublicEnv(source);
+    return true;
+  } catch {
+    return false;
+  }
+}

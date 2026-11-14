@@ -1,4 +1,5 @@
 import { createSupabaseServerClient } from "@/modules/supabase/server";
+import { isSupabaseConfigured } from "@/config/env";
 import { hasSupabaseSecretKey } from "@/config/env.server";
 import { createServiceRoleClient } from "./client";
 
@@ -43,6 +44,7 @@ type PlatformAdminRow = {
 };
 
 export async function requirePlatformAdmin(): Promise<AdminGuardResult> {
+  if (!isSupabaseConfigured()) return { ok: false, reason: "not_configured" };
   const supabase = await createSupabaseServerClient();
 
   const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();

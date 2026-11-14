@@ -1,7 +1,7 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
-import { getSupabasePublicEnv } from "@/config/env";
+import { getSupabasePublicEnv, isSupabaseConfigured } from "@/config/env";
 
 /**
  * Supabase client for Server Components, Server Actions and Route Handlers.
@@ -44,6 +44,8 @@ export async function createSupabaseServerClient() {
  * trusting it unverified would let anyone render another user's page.
  */
 export async function getVerifiedUserId(): Promise<string | null> {
+  // Same reasoning as the proxy: unconfigured means unauthenticated, not 500.
+  if (!isSupabaseConfigured()) return null;
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.getClaims();
   if (error || !data?.claims?.sub) return null;
