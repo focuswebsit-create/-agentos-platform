@@ -22,14 +22,14 @@ Status of what is already built lives in `DEVELOPMENT_PROGRESS.md`; evidence in
 |---|---|---|---|---|
 | 1 | Runs stuck in QUEUED: claim, kick, recovery, explanations | P3 | ✅ `0dbc0da` | — |
 | 2 | Verify simulated save → publish → run on the agentos-demo preview | P3 | ⏳ owner | env vars, see RELEASE_READINESS |
-| 3 | Apply migrations 0019 and 0020 to Development | P3/P5 | ⏳ owner | — |
+| 3 | Apply migrations 0019 → 0022 to Development | P3–P5 | ⏳ owner | — |
 | 4 | Agent Studio: duplicate agent, restore an earlier version, business goals field | P2 | ✅ this commit | — |
-| 5 | Agent Studio: test the DRAFT in the playground before publishing | P2/P3 | next | 4 |
+| 5 | Agent Studio: test the DRAFT in the playground before publishing | P2/P3 | ✅ `6248dce` (0021) | 4 |
 | 6 | Strictly limited real Anthropic smoke test | P3 | ⏳ owner approval | 2 |
 | 7 | Entitlements: plan catalog, subscriptions, webhook dedupe, `effective_entitlements()`; budget + concurrency enforced in `start_run`; billing screen (migration 0020, ADR-0013) | P5 | ✅ code; ⏳ owner applies 0020 | — |
 | 8 | Billing UI: plan selection, usage vs allowance, sandbox checkout behind a provider adapter; webhook verify + dedupe; never grant access on redirect | P5 | planned | 7, merchant choice |
-| 9 | Knowledge: upload, org-isolated storage and retrieval, injection-resistant prompting | P4 | planned | ADR, storage bucket (owner) |
-| 10 | Web Chat channel: embeddable widget, conversations, human handoff | P4 | planned | 9 optional |
+| 9 | Knowledge: upload, org-isolated storage and retrieval, injection-resistant prompting | P4 | ✅ `ec00dc5` (0022, text/markdown, full-text search) | — |
+| 10 | Web Chat channel: embeddable widget, conversations, human handoff | P4 | next | ADR (public endpoint abuse limits) |
 | 11 | Tools + human approval on exact arguments | P4 | planned | ADR |
 | 12 | WhatsApp Business adapter (testable, not live) | P4 | planned | Meta credentials (owner) |
 | 13 | Super Admin: incidents/alerts, plan overrides | P6 | planned | 7 |

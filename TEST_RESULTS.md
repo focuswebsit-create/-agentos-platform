@@ -3,6 +3,20 @@
 Exact results per pushed milestone, newest first. "Local DB" means PostgreSQL 16
 with the Supabase compatibility shim in this container — not Supabase.
 
+## `ec00dc5` — knowledge sources (2026-11-14)
+
+lint 0 · typecheck 0 · format 0 · unit 29 files / 380 passed · build 0 · e2e 34 passed ·
+RLS 245 PASS (group 18: roles, cross-org bases/documents/chunks/search, FK containment,
+dedupe, delete cascade, plan limit) · secret scan findings=0. New unit files:
+`knowledge-text`, `knowledge-routes`; executor retrieval tests (org filter, data framing,
+fence escape, trace counts only).
+
+## `6248dce` — draft test runs (2026-11-14)
+
+lint 0 · typecheck 0 · format 0 · unit 27 files / 357 passed · build 0 · e2e 34 passed ·
+RLS 232 PASS (group 17) · secret scan findings=0. CI for `f6a936a` (contains `cc32036`):
+all jobs success incl. gitleaks; Vercel agentos-demo + agentos-platform completed.
+
 ## P5 slice: entitlements and billing screen (2026-11-14)
 
 lint 0 · typecheck 0 · format 0 · unit 26 files / 349 passed · build 0 · e2e 34 passed ·

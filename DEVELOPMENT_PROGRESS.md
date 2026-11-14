@@ -6,7 +6,7 @@ sections under **History** are append-only.
 
 **Last updated:** 2026-11-14
 **Branch:** `claude/agentos-p1-infrastructure-9gibn2` (never merged to `main`; no production deploy)
-**Last commit:** `cc32036` (P5 entitlements) after `4955966` (Studio) and `0dbc0da` (runs stuck in QUEUED) — see also `MASTER_DEVELOPMENT_PLAN.md`, `RELEASE_READINESS.md`, `TEST_RESULTS.md`
+**Last commit:** `ec00dc5` (knowledge) — see `RELEASE_READINESS.md` for the gate matrix
 
 ---
 
@@ -18,9 +18,9 @@ sections under **History** are append-only.
 |---|---|---|
 | **P0** | Scaffold, CI, RTL marketing site, shells | ✅ Complete, on `main` |
 | **P1** | Auth, organisations, roles, invitations, RLS, admin boundary | ✅ Code complete · RLS proven locally (192 checks) · ⚠️ GoTrue/PostgREST paths verified only by the owner's manual use of the preview |
-| **P2** | Agent Studio, versions, templates | 🟡 Drafts, publish, immutable versions, history, **restore to draft, duplicate, business goals**, 4 starter templates, Super Admin template publishing. **Missing:** test-before-publish on the draft, more domain templates |
+| **P2** | Agent Studio, versions, templates | 🟡 Drafts, publish, immutable versions, history, restore to draft, duplicate, business goals, **test the saved draft before publishing (0021)**, 4 starter templates, Super Admin template publishing. **Missing:** more domain templates |
 | **P3** | Runtime, real provider, usage ledger | 🟡 Runs with atomic claim, recovery kick and stale-run recovery, budget reservation, settlement, usage ledger, simulation provider, Anthropic provider (mock-tested only, gated by `AGENTOS_ENABLE_LIVE_AI`). **Missing:** durable execution (Inngest), tool calls, conversations/memory, streaming, live Anthropic verification |
-| **P4** | Teams, knowledge, approvals, channels, automations | ⬜ Not started — Web Chat, WhatsApp Business API, triggers, handoff, approvals |
+| **P4** | Teams, knowledge, approvals, channels, automations | 🟡 **Knowledge sources with org-isolated retrieval (0022)**. **Missing:** Web Chat, workflows/schedules, tools + approvals, handoff, WhatsApp |
 | **P5** | Subscriptions (sandbox only), quotas, invoices | 🟡 Plan catalog, subscriptions, webhook dedupe, entitlements enforced in `start_run`, billing screen (0020 not yet applied). **Missing:** payment provider, checkout, webhook processor, invoices |
 | **P6** | Super Admin | 🟡 Organisations, usage, audit log, templates, enforced suspension. **Missing:** incidents/alerts, live AAL2 verification |
 | **P7** | Security audit, E2E with test accounts, launch readiness | 🟡 Launch kit (`docs/business/LAUNCH_KIT_HE.md`), privacy/terms drafts for legal review (`docs/legal/`), `RELEASE_READINESS.md`. Audit and journey E2E not started |
@@ -139,12 +139,19 @@ at the network proxy. Commit build status is read from GitHub commit statuses.
 
 ## Next task
 
-1. Owner: `RELEASE_READINESS.md` §7 — preview env vars, run MARKET on Simulation,
-   apply 0019 then 0020, confirm Production Branch = `main`.
-2. Agent Studio: run the DRAFT in the playground before publishing (needs a
-   `start_test_run` path that pins the draft; migration + ADR).
-3. P4: knowledge sources (ADR first: storage bucket, size/MIME limits,
-   org-scoped retrieval, prompt-injection handling).
+1. Owner: `RELEASE_READINESS.md` §3 (preview env vars, migrations 0019–0022,
+   run MARKET on Simulation, Production Branch check, payment provider choice).
+2. P4 Web Chat: ADR first (public endpoint, per-agent publishable key,
+   rate limit, budget), then widget + conversations + human handoff.
+3. API rate limiting for public endpoints (residual risk R2).
+
+### Resume checkpoint
+
+Branch `claude/agentos-p1-infrastructure-9gibn2` at `ec00dc5`, clean, pushed.
+Local DB suite: `/root/.agentos-rls-test/rls-cluster.sh start && npm run test:rls`
+(245 checks). Migrations 0019–0022 are files only; the hosted Development DB has
+0001–0018. Gates: lint, typecheck, format:check, test, build, test:e2e, test:rls,
+secret scan — all green at `ec00dc5`.
 
 ---
 
