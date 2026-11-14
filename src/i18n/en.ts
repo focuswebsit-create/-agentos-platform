@@ -546,6 +546,10 @@ export const en: Dictionary = {
       rateLimited: "Too many attempts. Wait a moment and try again.",
       generic: "Something went wrong. Please try again.",
       signUpDisabled: "Account creation is unavailable right now.",
+      notConfigured:
+        "The identity service is not configured in this environment, so signing up and signing in are unavailable. This is a configuration fault on our side — retrying will not help.",
+      timeout: "The server did not answer in time. Check your connection and try again.",
+      network: "We could not reach the server. Check your connection and try again.",
     },
   },
   onboarding: {

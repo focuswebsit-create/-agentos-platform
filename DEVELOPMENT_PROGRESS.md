@@ -618,6 +618,57 @@ still reads and edits, and that restoring clears the reason and the timestamp.
 
 ---
 
+## The stuck "רגע…" button
+
+Reported on the preview deployment: pressing sign in or sign up left the label
+on "רגע…" with no error and no response. All five auth screens had the same
+shape:
+
+```ts
+setPending(true);
+const supabase = createSupabaseBrowserClient();   // throws when unconfigured
+await supabase.auth.signInWithPassword(...);      // rejects on network failure
+```
+
+Neither line was inside a try/catch. A throw from either became an unhandled
+rejection, `setPending(false)` was never reached, and the spinner ran forever.
+
+Every auth call now goes through `callAuth` (`src/components/auth/auth-client.ts`),
+which **never throws**, **times out at 15 seconds** — Supabase's auth methods
+take no `AbortSignal`, so a hung request was indistinguishable from a frozen
+page — and **distinguishes "not configured" from "network failed"**, because
+retrying fixes one and can never fix the other.
+
+### The first diagnosis was wrong, and checking changed the fix
+
+The obvious explanation was missing `NEXT_PUBLIC_SUPABASE_*` on Preview. It is
+not: the auth **layout** has always guarded that case and renders "ההתחברות
+אינה זמינה כרגע" with no form at all. Verified by building with the variables
+unset and loading the page in a browser.
+
+So the form rendering at all means the variables **are** set on Preview, and
+the failure is in the request itself — most likely a paused Supabase project,
+which is what a 15-second timeout now says out loud instead of spinning. The
+page-level guard that had been added on the wrong theory was removed rather
+than left beside the layout's: two mechanisms for one rule is how they drift
+apart. What was kept is the useful part — the notice now names the two
+variables, because whoever sees it on a preview is usually the person who can
+set them.
+
+### A test that would have passed locally and failed in CI
+
+The new e2e keys its assertion to `NEXT_PUBLIC_SUPABASE_URL`, which is set on
+this machine and absent in CI. Run locally it took the configured branch and
+passed; run against a deliberately unconfigured build it failed on all four
+routes. Both paths are now verified by hand: **29 passed / 3 skipped
+unconfigured, 32 passed configured.**
+
+`docs/DEPLOYMENT.md` is new: which variable each surface needs, what happens
+without it, how Vercel scopes them to Preview, and what the four error messages
+now mean.
+
+---
+
 ## Decisions on record
 
 `docs/adr/0001` single app · `0002` admin boundary in P1, dashboards in P6 ·

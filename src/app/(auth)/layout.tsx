@@ -41,10 +41,24 @@ export default function AuthLayout({ children }: LayoutProps<"/">) {
         {isSupabaseConfigured() ? (
           children
         ) : (
-          <div className="space-y-3 rounded-2xl border border-warning/30 bg-warning/5 p-6 text-center">
+          <div
+            data-testid="auth-unavailable"
+            className="space-y-3 rounded-2xl border border-warning/30 bg-warning/5 p-6 text-center"
+          >
             <h1 className="text-lg font-semibold">{t.auth.unavailable.title}</h1>
             <p className="text-sm leading-relaxed text-muted-foreground">
               {t.auth.unavailable.body}
+            </p>
+            {/* Named, because whoever sees this on a preview deployment is
+                usually the person who can set them, and "something went wrong"
+                would send them to read logs for a fact this page already has.
+                Nothing secret: both names are in .env.example and every
+                NEXT_PUBLIC_ value is served to the browser by design. No value
+                is printed. */}
+            <p dir="ltr" className="font-mono text-xs text-muted-foreground/80">
+              NEXT_PUBLIC_SUPABASE_URL
+              <br />
+              NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
             </p>
           </div>
         )}

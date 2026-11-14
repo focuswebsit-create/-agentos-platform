@@ -1103,3 +1103,81 @@ against it. The behaviour is proven on the local cluster.
 2. P4 schema: teams, knowledge, approvals.
 3. **Blocked on the owner:** a real provider key, a merchant account, the seven
    Supabase setup items.
+
+---
+
+## 2026-11-14 — the auth screens could hang forever
+
+Reported: sign-in and sign-up on the preview deployment stayed on "רגע…" with
+no error and no response.
+
+### Cause
+
+All five auth forms shared one shape — `setPending(true)`, then
+`createSupabaseBrowserClient()` (which throws when the public environment is
+missing or malformed), then an `await` on a Supabase auth method (which rejects
+on any transport failure). Neither call was inside a try/catch, so a throw
+became an unhandled rejection, `setPending(false)` never ran, and the spinner
+never stopped. There was also no timeout, so a request that simply never
+answered looked identical to a frozen page.
+
+### Changed
+
+| File | Change |
+|---|---|
+| `src/components/auth/auth-client.ts` | new — `callAuth()`: never throws, 15s timeout, distinguishes not-configured from network |
+| `src/components/auth/{sign-in,sign-up,forgot-password,reset-password}-form.tsx`, `resend-verification.tsx` | all five routed through it; none constructs a client directly any more |
+| `src/app/(auth)/layout.tsx` | the existing unavailable notice now names the two variables and carries a test id |
+| `src/i18n/{he,en}.ts` | `errors.notConfigured` / `.timeout` / `.network` |
+| `tests/unit/auth-client.test.ts` | new — 8 checks |
+| `tests/e2e/smoke.spec.ts` | the unavailable notice appears exactly when it should, on all four routes |
+| `docs/DEPLOYMENT.md` | new — environment variables, migration status, how to read each error |
+
+### Commands and exact results
+
+| Command | Result |
+|---|---|
+| `npm run lint` | exit 0 |
+| `npm run typecheck` | exit 0 |
+| `npm run format:check` | exit 0 |
+| `npm test` | exit 0 — `Tests 191 passed (191)` |
+| `npm run build` | exit 0 |
+| `npm run test:e2e` (configured) | exit 0 — `32 passed` |
+| `npx playwright test` against a build with the variables unset | `29 passed, 3 skipped, 0 failed` |
+| `npm run test:rls` | exit 0 — `PASS 174 FAIL 0 SKIP 0` |
+| secret scan (local) | `findings=0 errors=0 credential_files=0` |
+
+### Two things checking changed
+
+**1. The first diagnosis was wrong.** Missing `NEXT_PUBLIC_SUPABASE_*` was the
+obvious explanation and is not the cause: the auth layout has always guarded
+that case and renders a notice with no form. Confirmed by building with the
+variables unset and loading the page in a real browser — it shows the notice,
+not a form, so a stuck *button* means the form rendered, which means the
+variables are present on Preview and the request itself is failing. A paused
+Supabase project fits, and the 15-second timeout now reports it instead of
+spinning. The page-level guard added on the wrong theory was removed rather
+than left beside the layout's.
+
+**2. The new e2e would have passed here and failed in CI.** It keys its
+assertion to `NEXT_PUBLIC_SUPABASE_URL`, which is set on this machine and
+absent in CI. Locally it took the configured branch and passed; run against a
+deliberately unconfigured build it failed on all four routes, because the
+layout's notice had no test id. Both paths were then fixed and verified
+separately.
+
+The unit tests were mutation-checked: restoring the unguarded client
+construction failed "reports not_configured when the client cannot be built",
+and only that one.
+
+### Not fixed, because it cannot be from here
+
+Which failure the preview is actually hitting. The network here blocks
+`*.vercel.app` and `vercel.com`, and no migration has been applied, so the
+preview cannot be exercised from this session. What the fix guarantees is that
+the screen now states which of the four cases it is, which is what makes the
+next step obvious to whoever opens it.
+
+### Next
+
+P4 schema: teams, knowledge bases, documents, approvals.

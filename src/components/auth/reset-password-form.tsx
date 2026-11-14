@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { createSupabaseBrowserClient } from "@/modules/supabase/browser";
+import { authFailureMessage, callAuth } from "./auth-client";
 import { ResetPasswordSchema } from "@/modules/contracts";
 import type { Dictionary } from "@/i18n";
 import { FormAlert, PasswordField, Spinner } from "./form-parts";
@@ -32,18 +32,17 @@ export function ResetPasswordForm({ t }: { t: Dictionary }) {
     let cancelled = false;
     // A rejected promise inside an effect is an unhandled rejection, which
     // takes the whole tree down and shows the browser's "page couldn't load"
-    // screen. A network failure here must degrade to "no recovery session",
-    // which renders the "ask for a new link" message instead.
+    // screen. A network failure or a hang here must degrade to "no recovery
+    // session", which renders the "ask for a new link" message instead.
     (async () => {
-      try {
-        const supabase = createSupabaseBrowserClient();
-        const { data } = await supabase.auth.getClaims();
-        if (!cancelled) setHasSession(Boolean(data?.claims?.sub));
-      } catch {
-        if (!cancelled) setHasSession(false);
-      } finally {
-        if (!cancelled) setChecking(false);
-      }
+      // Through callAuth so a request that never answers cannot leave
+      // `checking` true: the try/catch below handles a rejection, but it does
+      // nothing about a hang, and a hang here is the same infinite spinner
+      // from the other direction.
+      const result = await callAuth((supabase) => supabase.auth.getClaims());
+      if (cancelled) return;
+      setHasSession(result.ok ? Boolean(result.data.data?.claims?.sub) : false);
+      setChecking(false);
     })();
     return () => {
       cancelled = true;
@@ -70,10 +69,17 @@ export function ResetPasswordForm({ t }: { t: Dictionary }) {
     setErrors({});
     setPending(true);
 
-    const supabase = createSupabaseBrowserClient();
-    const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
+    const result = await callAuth((supabase) =>
+      supabase.auth.updateUser({ password: parsed.data.password }),
+    );
     setPending(false);
 
+    if (!result.ok) {
+      setFormError(authFailureMessage(result, t.auth.errors));
+      return;
+    }
+
+    const { error } = result.data;
     if (error) {
       setFormError(error.status === 429 ? t.auth.errors.rateLimited : t.auth.errors.generic);
       return;
@@ -81,7 +87,12 @@ export function ResetPasswordForm({ t }: { t: Dictionary }) {
 
     // Sign out everywhere: a password reset usually follows a suspected
     // compromise, so leaving other sessions alive would defeat the point.
-    await supabase.auth.signOut({ scope: "global" });
+    //
+    // A failure here is not reported and does not block: the password HAS been
+    // changed, and telling the user it failed would send them to try again
+    // with a password that no longer works. The other sessions expire on their
+    // own refresh, which will fail against the new credential.
+    await callAuth((supabase) => supabase.auth.signOut({ scope: "global" }));
     setDone(true);
     router.refresh();
   }

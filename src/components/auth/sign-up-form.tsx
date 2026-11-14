@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { createSupabaseBrowserClient } from "@/modules/supabase/browser";
+import { authFailureMessage, callAuth } from "./auth-client";
 import { SignUpSchema } from "@/modules/contracts";
 import type { Dictionary } from "@/i18n";
 import { FormAlert, PasswordField, Spinner, TextField } from "./form-parts";
@@ -35,18 +35,26 @@ export function SignUpForm({ t }: { t: Dictionary }) {
     setFieldErrors({});
     setPending(true);
 
-    const supabase = createSupabaseBrowserClient();
-    const { error } = await supabase.auth.signUp({
-      email: parsed.data.email,
-      password: parsed.data.password,
-      options: {
-        // Read by the handle_new_user trigger to seed public.profiles, so a
-        // member list shows a name instead of an email local part.
-        data: { display_name: parsed.data.displayName },
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=/app`,
-      },
-    });
+    const result = await callAuth((supabase) =>
+      supabase.auth.signUp({
+        email: parsed.data.email,
+        password: parsed.data.password,
+        options: {
+          // Read by the handle_new_user trigger to seed public.profiles, so a
+          // member list shows a name instead of an email local part.
+          data: { display_name: parsed.data.displayName },
+          emailRedirectTo: `${window.location.origin}/auth/callback?next=/app`,
+        },
+      }),
+    );
 
+    if (!result.ok) {
+      setPending(false);
+      setFormError(authFailureMessage(result, t.auth.errors));
+      return;
+    }
+
+    const { error } = result.data;
     if (error) {
       setPending(false);
       if (error.status === 429) setFormError(t.auth.errors.rateLimited);

@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { createSupabaseBrowserClient } from "@/modules/supabase/browser";
+import { authFailureMessage, callAuth } from "./auth-client";
 import { SignInSchema } from "@/modules/contracts";
 import type { Dictionary } from "@/i18n";
 import { FormAlert, PasswordField, Spinner, TextField } from "./form-parts";
@@ -35,12 +35,21 @@ export function SignInForm({ t }: { t: Dictionary }) {
     setFieldErrors({});
     setPending(true);
 
-    const supabase = createSupabaseBrowserClient();
-    const { error } = await supabase.auth.signInWithPassword({
-      email: parsed.data.email,
-      password: parsed.data.password,
-    });
+    // callAuth never throws and always answers, so the spinner always stops.
+    const result = await callAuth((supabase) =>
+      supabase.auth.signInWithPassword({
+        email: parsed.data.email,
+        password: parsed.data.password,
+      }),
+    );
 
+    if (!result.ok) {
+      setPending(false);
+      setFormError(authFailureMessage(result, t.auth.errors));
+      return;
+    }
+
+    const { error } = result.data;
     if (error) {
       setPending(false);
       const code = error.code ?? "";

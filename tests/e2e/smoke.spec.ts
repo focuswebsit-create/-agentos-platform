@@ -49,6 +49,46 @@ test.describe("authentication screens are reachable and RTL", () => {
   }
 });
 
+test.describe("an unconfigured deployment says so instead of hanging", () => {
+  // The reported symptom on the preview deployment: pressing the button left
+  // the label on "רגע…" with no error, because the Supabase client threw
+  // before any catch existed and the pending state was never cleared.
+  //
+  // CI runs with no NEXT_PUBLIC_SUPABASE_* variables, so there it takes the
+  // unconfigured branch; a developer machine with them set takes the other.
+  // The assertion is keyed to the same shell that built and started the
+  // server, so it is deterministic in both.
+  const configured = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL);
+
+  for (const route of ["/sign-in", "/sign-up", "/forgot-password", "/reset-password"]) {
+    test(`${route} shows the unavailable notice exactly when it should`, async ({ page }) => {
+      await page.goto(route);
+      const notice = page.getByTestId("auth-unavailable");
+
+      if (configured) {
+        await expect(notice).toHaveCount(0);
+      } else {
+        // The whole point: the user is told before typing, rather than after
+        // pressing a button that can never work.
+        await expect(notice).toBeVisible();
+        await expect(page.locator("form")).toHaveCount(0);
+      }
+    });
+  }
+
+  // Only the two that always render a form. /forgot-password does too, but
+  // /reset-password deliberately shows "ask for a new link" when there is no
+  // recovery session, which is a message and not a form - asserting a form
+  // there would be asserting the wrong behaviour.
+  for (const route of ["/sign-in", "/sign-up", "/forgot-password"]) {
+    test(`${route} renders a form when the service is configured`, async ({ page }) => {
+      test.skip(!configured, "no Supabase configuration in this environment");
+      await page.goto(route);
+      await expect(page.locator("form")).toBeVisible();
+    });
+  }
+});
+
 test.describe("private routes are closed to anonymous visitors", () => {
   for (const route of PRIVATE_ROUTES) {
     test(`${route} redirects to sign-in`, async ({ page }) => {
