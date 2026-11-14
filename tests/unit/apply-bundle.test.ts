@@ -69,3 +69,49 @@ describe("the apply bundle", () => {
     expect(bundle).not.toMatch(/postgres(ql)?:\/\/[^\s]*:[^\s]+@/);
   });
 });
+
+describe("the incremental file 0019-0022 (for a database that has 0001-0018)", () => {
+  const FILE = "supabase/apply/03_incremental_0019_0022.sql";
+  const incremental = readFileSync(FILE, "utf8");
+
+  it("is byte-identical to a fresh build from the current migrations", () => {
+    const scratch = mkdtempSync(join(tmpdir(), "incremental-"));
+    execFileSync("bash", [
+      "-c",
+      `mkdir -p "${scratch}/supabase/apply" "${scratch}/scripts" &&
+      cp -r supabase/migrations "${scratch}/supabase/" &&
+      cp scripts/build-incremental-bundle.sh "${scratch}/scripts/" &&
+      bash "${scratch}/scripts/build-incremental-bundle.sh" >/dev/null`,
+    ]);
+    const fresh = readFileSync(join(scratch, FILE), "utf8");
+    expect(fresh === incremental, "stale - run scripts/build-incremental-bundle.sh").toBe(true);
+  });
+
+  it("contains exactly 0019-0022, in order, and nothing earlier", () => {
+    let cursor = -1;
+    for (const f of [
+      "0019_settle_run_idempotent.sql",
+      "0020_billing_entitlements.sql",
+      "0021_test_runs.sql",
+      "0022_knowledge.sql",
+    ]) {
+      const at = incremental.indexOf(`-- >>> ${f}`);
+      expect(at).toBeGreaterThan(cursor);
+      cursor = at;
+    }
+    expect(incremental).not.toContain("-- >>> 0018_");
+  });
+
+  it("is one transaction, guarded at both ends", () => {
+    expect(incremental.match(/^begin;$/gm)).toHaveLength(1);
+    expect(incremental.match(/^commit;$/gm)).toHaveLength(1);
+    expect(incremental).toContain("preflight: migrations 0001-0018 are not all present");
+    expect(incremental).toContain("preflight: 0020-0022 are already");
+    expect(incremental).toContain("post-check: anon can execute");
+  });
+
+  it("carries no credential or project reference", () => {
+    expect(incremental).not.toMatch(/sb_secret_[A-Za-z0-9]|sb_publishable_[A-Za-z0-9]/);
+    expect(incremental).not.toMatch(/[a-z0-9]{20}\.supabase\.co/);
+  });
+});

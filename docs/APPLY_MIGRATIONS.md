@@ -139,6 +139,17 @@ and `SUPABASE_SECRET_KEY`, which the executor uses to record the run. See
 
 ---
 
+## Simplest: one file for 0019–0022
+
+`supabase/apply/03_incremental_0019_0022.sql` — all four in **one transaction**.
+SQL Editor → New query → paste the whole file → Run. It refuses to start
+unless 0001–0018 are present and refuses if 0020–0022 are already there, so a
+second run changes nothing; it rolls back if anything expected is missing or if
+`anon` could execute any function. Rehearsed on a local copy of exactly
+0001–0018: applied cleanly, second run refused with an identical schema
+fingerprint, and all 245 database checks pass on the result. Use it **instead
+of** the per-migration steps below, not in addition.
+
 ## Incremental: 0019 on a database that already has 0001–0018
 
 The Development project already has 0001–0018 (verified read-only on
