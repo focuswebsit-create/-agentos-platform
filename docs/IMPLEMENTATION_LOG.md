@@ -656,3 +656,101 @@ Unchanged, plus:
 | **"One actual LLM provider"** | **Blocked on the owner.** A real provider key means real charges on their account. Needs an explicit decision. |
 | P5 billing | **Blocked on the owner**: merchant account and provider selection. |
 | P6 Super Admin | Unblocked — and it is also the only path to publishing production templates. |
+
+---
+
+## 2026-11-14 — P3 step 2: provider boundary, executor, runs screens
+
+Scope stated before coding: the `ModelProvider` interface, a deterministic test
+provider, the rate card, the executor, dispatch/cancel routes and the runs
+screens. Not in scope: a real provider (owner decision), Inngest, LangGraph
+multi-step graphs, approvals.
+
+### Changed
+
+| File | Change |
+|---|---|
+| `src/modules/agent-engine/provider.ts` | new — the interface and its three rules |
+| `src/modules/agent-engine/rate-card.ts` | new — versioned prices, rounding up, integer micros |
+| `src/modules/agent-engine/providers/mock.ts` | new — deterministic, self-identifying |
+| `src/modules/agent-engine/registry.ts` | new — what will actually answer, behind a flag |
+| `src/modules/runtime/executor.ts` | new — the execution plane |
+| `src/modules/runtime/data.ts` | new — `listRuns`, `getRun`, `getUsageSummary` |
+| `src/modules/service-role/client.ts` | **moved** from `platform-admin/`, plus `isServiceRoleConfigured()` |
+| `src/modules/platform-admin/guard.ts` | asks the service-role module, not the env module |
+| `eslint.config.mjs` | containment split into two rings |
+| `src/modules/tenancy/permissions.ts` | `run.read` / `run.start` / `run.cancel` / `usage.read` |
+| `src/app/api/agents/[id]/run/route.ts`, `src/app/api/runs/[id]/cancel/route.ts` | new |
+| `src/components/runs/*`, `src/app/app/runs/*` | playground, cancel, list, trace |
+| `src/app/app/agents/[id]/page.tsx` | the playground section |
+| `vitest.config.mts`, `tests/stubs/server-only.ts` | stub `server-only` under jsdom |
+| `.env.example` | `AGENTOS_ENABLE_MOCK_PROVIDER`, and the corrected service-role note |
+| `tests/unit/agent-engine.test.ts`, `tests/unit/executor.test.ts` | new — 27 checks |
+| `docs/adr/0011-p3-provider-and-execution.md` | new |
+
+### Commands and exact results
+
+| Command | Result |
+|---|---|
+| `npm run lint` | exit 0 |
+| `npm run typecheck` | exit 0 |
+| `npm run format:check` | exit 0 |
+| `npm test` | exit 0 — `Tests 172 passed (172)` |
+| `npm run build` | exit 0 |
+| `npm run test:e2e` | exit 0 — `23 passed` |
+| `npm run test:rls` | exit 0 — `PASS 159 FAIL 0 SKIP 0` |
+| secret scan (local) | `findings=0 errors=0 credential_files=0` |
+| gitleaks | not run locally; CI runs it over full history |
+
+The first `test:rls` attempt failed with `connection refused`: the local cluster
+had stopped. Restarted and re-run. Recorded because the gate failing loudly is
+the behaviour that was wanted — a suite that silently reported nothing would
+have been the bad outcome.
+
+### Mutation-checked, not just green
+
+Eleven executor tests passed on the first run, which is not by itself evidence
+that they are wired to anything. Two mutations were applied and reverted:
+
+1. Removed `finish()` from the `catch` → "settles even when our own code throws
+   mid-run" failed.
+2. Added `finish()` to the not-queued branch → "does NOT settle a run that is no
+   longer queued" failed.
+
+Both failed for the right reason and passed again on restore.
+
+### Deliberate choices
+
+- **Rounding is up.** Rounded to nearest, a long tail of sub-micro calls each
+  costs zero and a tenant spends indefinitely against a cap that never moves.
+- **The rate card is versioned**, and every usage event records which version
+  priced it. Otherwise a price change silently re-costs last month.
+- **No number in the rate card is a real provider price**, and the model ids are
+  internal picker keys. Real prices come from the provider's published card when
+  one is connected.
+- **A reused idempotent dispatch is not executed.** It is already running or
+  finished; executing it again would charge twice for one dispatch.
+- **The `catch` swallows the original error** rather than rethrowing: this runs
+  detached from a request, and a rethrow becomes an unhandled rejection with the
+  settlement never happening.
+
+### Not verified, and what is still missing
+
+- **No real provider.** Blocked on the owner: a key means charges on their
+  account. The product currently says it cannot run, which is true.
+- **Execution is not durable.** `after()` runs in the same invocation. A crash
+  loses the run; the reservation is what stops it losing money.
+- **The sweeper has no schedule.** `expire_stale_reservations()` exists and is
+  tested; nothing calls it. Until it is scheduled, an abandoned run holds its
+  budget until someone invokes it by hand. This is the most significant open
+  gap in P3.
+- Nothing in P3 has run against Supabase. The executor has been exercised
+  against a faked client in unit tests and the SQL against the local cluster.
+
+### Next
+
+1. Schedule the reservation sweeper (a cron route plus a secret header, or a
+   platform scheduler — needs a decision on which).
+2. Multi-step execution: the current executor performs exactly one model call.
+3. P6 Super Admin, which is unblocked and is also the only path to publishing
+   production templates.

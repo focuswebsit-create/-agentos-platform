@@ -4,9 +4,11 @@ import { notFound, redirect } from "next/navigation";
 import { ArrowRightIcon } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { AgentEditor } from "@/components/agents/agent-editor";
+import { RunAgentForm } from "@/components/runs/run-agent-form";
 import { can } from "@/modules/tenancy";
 import { resolveOrgContext } from "@/modules/tenancy/context";
 import { getAgent } from "@/modules/agents/data";
+import { hasAnyConfiguredProvider } from "@/modules/agent-engine/registry";
 import { getDictionary } from "@/i18n";
 
 const t = getDictionary();
@@ -40,6 +42,18 @@ export default async function AgentDetailPage(props: PageProps<"/app/agents/[id]
       </Link>
 
       <PageHeader title={agent.name} subtitle={agent.description ?? t.agents.subtitle} />
+
+      <section className="rounded-2xl border bg-card p-5 shadow-sm sm:p-6">
+        <h2 className="mb-4 text-base font-semibold">{t.runs.playground.heading}</h2>
+        <RunAgentForm
+          t={t}
+          orgId={context.orgId}
+          agentId={agent.id}
+          canRun={can(context.role, "run.start") && agent.status !== "archived"}
+          isPublished={agent.activeVersionId !== null}
+          providerConfigured={hasAnyConfiguredProvider()}
+        />
+      </section>
 
       <AgentEditor
         t={t}

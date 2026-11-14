@@ -48,7 +48,7 @@ describe("customer sidebar", () => {
     // P0 asserted that every non-dashboard item had a phase, because none of
     // them existed. P1 delivers team and settings, so marking them "arrives in
     // phase P1" would now be a false label on a working screen.
-    const DELIVERED = new Set(["dashboard", "agents", "templates", "team", "settings"]);
+    const DELIVERED = new Set(["dashboard", "agents", "templates", "runs", "team", "settings"]);
     for (const item of APP_NAV) {
       if (DELIVERED.has(item.key)) {
         expect(item.phase, `${item.key} is delivered and must carry no phase`).toBeNull();

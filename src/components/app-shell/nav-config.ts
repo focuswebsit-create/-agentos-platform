@@ -57,7 +57,7 @@ export const APP_NAV: readonly AppNavItem[] = [
     phase: null,
   },
   { key: "knowledge", href: "/app/knowledge", icon: BookOpenIcon, group: "build", phase: "P4" },
-  { key: "runs", href: "/app/runs", icon: PlayCircleIcon, group: "operate", phase: "P3" },
+  { key: "runs", href: "/app/runs", icon: PlayCircleIcon, group: "operate", phase: null },
   {
     key: "approvals",
     href: "/app/approvals",

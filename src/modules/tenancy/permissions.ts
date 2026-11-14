@@ -34,6 +34,12 @@ export const ORG_ACTIONS = [
   "agent.update",
   "agent.publish",
   "agent.archive",
+
+  // P3.
+  "run.read",
+  "run.start",
+  "run.cancel",
+  "usage.read",
 ] as const;
 export type OrgAction = (typeof ORG_ACTIONS)[number];
 
@@ -62,6 +68,15 @@ const MATRIX: Readonly<Record<OrgAction, readonly OrgRole[]>> = {
   "agent.update": ["owner", "admin", "member"],
   "agent.publish": ["owner", "admin", "member"],
   "agent.archive": ["owner", "admin"],
+
+  // Anyone may watch what the workspace is doing; that is the whole of a
+  // viewer's job. Starting a run spends money, so a viewer may not.
+  "run.read": ["owner", "admin", "member", "viewer"],
+  "run.start": ["owner", "admin", "member"],
+  "run.cancel": ["owner", "admin", "member"],
+  // Per-call spend and monthly totals, matching 0014's policies and P1's rule
+  // that viewers and members do not see billing.
+  "usage.read": ["owner", "admin"],
 };
 
 export function can(role: OrgRole, action: OrgAction): boolean {

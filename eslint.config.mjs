@@ -25,9 +25,14 @@ const eslintConfig = defineConfig([
   // across tenants. Keeping it out of customer-reachable code is enforced here rather
   // than left to review discipline. The allowlist below is the complete set of files
   // permitted to touch it.
+  // Two rings, because they are not the same question.
+  //
+  // Ring 1 - the secret itself. Only the module that constructs the client may
+  // read it, so there is exactly one place where a BYPASSRLS credential enters
+  // the process.
   {
     files: ["src/**/*.{ts,tsx}"],
-    ignores: ["src/config/env.server.ts", "src/modules/platform-admin/**"],
+    ignores: ["src/config/env.server.ts", "src/modules/service-role/**"],
     rules: {
       "no-restricted-imports": [
         "error",
@@ -36,16 +41,36 @@ const eslintConfig = defineConfig([
             {
               name: "@/config/env.server",
               message:
-                "Server-only secrets. Import it from src/modules/platform-admin/ only, " +
-                "where every service-role read is org-filtered and audited.",
+                "Server-only secrets. Only src/modules/service-role/ reads them, and it is " +
+                "the single construction site for the BYPASSRLS client.",
             },
           ],
+        },
+      ],
+    },
+  },
+  // Ring 2 - the client. ARCHITECTURE.md names two authorities that need it and
+  // they are different things: the platform-admin boundary, which reads across
+  // tenants on purpose, and the execution plane, which writes run state and
+  // spend that no customer may write. Both are listed; nothing else may.
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: [
+      "src/modules/service-role/**",
+      "src/modules/platform-admin/**",
+      "src/modules/runtime/**",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
           patterns: [
             {
-              group: ["@/modules/platform-admin/client", "@/modules/platform-admin/client/*"],
+              group: ["@/modules/service-role/client", "@/modules/service-role/client/*"],
               message:
-                "The service-role Supabase client is internal to src/modules/platform-admin/. " +
-                "Use its exported guards and audited service methods instead.",
+                "The service-role Supabase client carries BYPASSRLS. Only the platform-admin " +
+                "boundary and the execution plane (src/modules/runtime/) may construct it; " +
+                "everywhere else, use their exported guards and audited methods.",
             },
           ],
         },

@@ -21,6 +21,7 @@ const PRIVATE_ROUTES = [
   "/app/templates",
   "/onboarding/start",
   "/app/runs",
+  "/app/runs/00000000-0000-4000-8000-000000000000",
   "/app/billing",
   "/onboarding",
 ];
@@ -126,7 +127,7 @@ test("state-changing API routes refuse an unauthenticated, CSRF-less call", asyn
   expect(getSwitch.status()).toBe(405);
 });
 
-test("agent and template routes are closed to an unauthenticated, CSRF-less caller", async ({
+test("agent, template and run routes are closed to an unauthenticated, CSRF-less caller", async ({
   request,
 }) => {
   // The whole agent surface, not a sample of it: each route is a separate
@@ -145,6 +146,8 @@ test("agent and template routes are closed to an unauthenticated, CSRF-less call
     request.post(`/api/agents/${id}/publish`, { data: { orgId: id } }),
     request.post(`/api/agents/${id}/archive`, { data: { orgId: id, archived: true } }),
     request.post(`/api/templates/${id}/install`, { data: { orgId: id } }),
+    request.post(`/api/agents/${id}/run`, { data: { orgId: id, prompt: "hello" } }),
+    request.post(`/api/runs/${id}/cancel`, { data: { orgId: id } }),
   ];
   for (const res of await Promise.all(calls)) {
     // 403 for the CSRF refusal, 401 if the session check answers first; never

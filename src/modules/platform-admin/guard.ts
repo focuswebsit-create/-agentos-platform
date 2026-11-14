@@ -1,7 +1,6 @@
 import { createSupabaseServerClient } from "@/modules/supabase/server";
 import { isSupabaseConfigured } from "@/config/env";
-import { hasSupabaseSecretKey } from "@/config/env.server";
-import { createServiceRoleClient } from "./client";
+import { createServiceRoleClient, isServiceRoleConfigured } from "@/modules/service-role/client";
 
 /**
  * The platform-admin boundary (SUPER_ADMIN.md "Identity boundary").
@@ -54,7 +53,7 @@ export async function requirePlatformAdmin(): Promise<AdminGuardResult> {
   // Without a secret key the allowlist cannot be read, so nobody is an admin.
   // Fails closed, and reports a distinct reason so a misconfiguration is not
   // mistaken for an authorisation failure in the logs.
-  if (!hasSupabaseSecretKey()) return { ok: false, reason: "not_configured" };
+  if (!isServiceRoleConfigured()) return { ok: false, reason: "not_configured" };
 
   let row: PlatformAdminRow | null = null;
   try {
@@ -101,7 +100,7 @@ export async function auditAdminAction(input: {
   orgId?: string | null;
   metadata?: Record<string, unknown>;
 }): Promise<void> {
-  if (!hasSupabaseSecretKey()) return;
+  if (!isServiceRoleConfigured()) return;
   try {
     const service = createServiceRoleClient();
     // log_platform_audit, not log_audit: this connection has no JWT, so

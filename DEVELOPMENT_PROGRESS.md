@@ -418,6 +418,64 @@ half a test.
 
 ---
 
+## An agent can be run
+
+The provider boundary, a deterministic test provider, the executor, the dispatch
+and cancel routes, the playground and the runs screens with a trace.
+`docs/adr/0011-p3-provider-and-execution.md` records the reasoning.
+
+**No real model is called, and every reply says so.** The mock's output begins
+`[סימולציה — לא תשובת מודל] … No language model was called`, because a
+plausible paragraph would end up in a screenshot and then in a conversation
+about what the product does. The runs screens repeat it above the results.
+`AGENTOS_ENABLE_MOCK_PROVIDER` is what registers it; production does not set it,
+so the production state is "no provider" and the product says it cannot run
+rather than serving a simulation to a paying customer.
+
+**Every dispatched run settles.** Success, provider failure, cancellation, a
+config that no longer parses, an exception in our own code — every path reaches
+`settle_run`, which returns the reserved budget. The one path that must *not*
+settle is a run already cancelled: `cancel_run` released the reservation, and
+settling again would credit the period twice and quietly inflate the tenant's
+headroom.
+
+Both invariants were checked by mutation: the fix reverted, the test watched to
+fail, the fix restored. A test suite where every test passes first time is a
+suite nobody has confirmed is wired up.
+
+**Usage is recorded even when the call failed.** A request that was billed and
+then errored still costs money, so the provider interface reports usage on
+failure and the executor prices it before it looks at success.
+
+**Prompt and completion text never reach the trace.** `run_steps` holds kinds,
+models, counts, costs and error codes; `summary_json` holds lengths, not
+content. A test asserts that neither the prompt nor the output appears anywhere
+in what the executor writes.
+
+### Execution is inline, and that is stated rather than papered over
+
+The route calls `start_run()`, returns, then executes in `after()` — the same
+invocation. A process that dies takes the run with it and nothing retries.
+`ARCHITECTURE.md` names Inngest for durable execution and it is not wired.
+
+What makes that survivable rather than silent is the reservation:
+`expire_stale_reservations()` reclaims the budget and marks the run
+`RUN_ABANDONED`. An abandoned run costs the tenant nothing permanent and does
+not sit in the UI claiming to be running. **The sweeper has no schedule yet** —
+it is a function and nothing calls it. That is the remaining gap.
+
+### The service-role client moved, and the containment got tighter
+
+It lived in `platform-admin/`, so the executor would have had to import from
+there and pretend to be an administrator. `ARCHITECTURE.md` names two
+authorities that hold this credential and they are different things. It is now
+`src/modules/service-role/`, and the ESLint rule is two rings instead of one:
+`@/config/env.server` is importable only from that module — tighter than before,
+when all of `platform-admin` could read the secret — and the client itself only
+from `platform-admin` and `runtime`.
+
+---
+
 ## Decisions on record
 
 `docs/adr/0001` single app · `0002` admin boundary in P1, dashboards in P6 ·
@@ -426,7 +484,8 @@ half a test.
 `0006` schema additions beyond `DATA_MODEL.md` · `0007` prepared OAuth path ·
 `0008` P2 agent and version schema ·
 `0009` P2 template catalog ·
-`0010` P3 runtime schema and the money.
+`0010` P3 runtime schema and the money ·
+`0011` P3 provider abstraction and inline execution.
 
 ---
 
