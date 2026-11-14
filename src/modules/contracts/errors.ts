@@ -47,6 +47,25 @@ export const ERROR_CODES = [
   "CSRF_INVALID",
   /** Input failed Zod validation. */
   "VALIDATION_FAILED",
+
+  /**
+   * P2 additions (agents). As above, added explicitly rather than folded into
+   * an existing code (CLAUDE.md rule 14); API_CONTRACT.md is updated in the
+   * same change.
+   *
+   * There is deliberately no AGENT_NOT_FOUND. An unknown agent id and an agent
+   * belonging to another organisation both answer ORG_ACCESS_DENIED, so the
+   * endpoint cannot be used to confirm that a given agent exists.
+   */
+  /** The agent is archived; it cannot be published or edited until restored. */
+  "AGENT_ARCHIVED",
+  /** The draft configuration is empty or does not satisfy the agent schema. */
+  "AGENT_CONFIG_INVALID",
+  /**
+   * An attempt to modify a version that has already been published. Published
+   * versions are the record of what ran; a new version is published instead.
+   */
+  "AGENT_VERSION_IMMUTABLE",
 ] as const;
 
 export const ErrorCodeSchema = z.enum(ERROR_CODES);

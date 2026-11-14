@@ -141,9 +141,19 @@ describe("Error taxonomy", () => {
     }
   });
 
+  it("contains the P2 agent codes, and deliberately no AGENT_NOT_FOUND", () => {
+    for (const code of ["AGENT_ARCHIVED", "AGENT_CONFIG_INVALID", "AGENT_VERSION_IMMUTABLE"]) {
+      expect(ERROR_CODES).toContain(code);
+    }
+    // An unknown agent id and an agent in another organisation both answer
+    // ORG_ACCESS_DENIED. A separate code would confirm that a given agent
+    // exists to someone who cannot otherwise see it (ADR-0008).
+    expect(ERROR_CODES).not.toContain("AGENT_NOT_FOUND");
+  });
+
   it("has no duplicates and a known size, so a code is never added by accident", () => {
     expect(new Set(ERROR_CODES).size).toBe(ERROR_CODES.length);
-    expect(ERROR_CODES).toHaveLength(21);
+    expect(ERROR_CODES).toHaveLength(24);
   });
 
   it("validates the error envelope", () => {

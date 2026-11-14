@@ -258,3 +258,87 @@ grants, **not** against Supabase or PostgREST.
 
 P2 groundwork: `agents` / `agent_versions` migrations with RLS, verified with
 `npm run test:rls`.
+
+---
+
+## 2026-11-14 — P2 step 1: agent and agent_version schema
+
+Scope stated before coding (CLAUDE.md rule 2): the database half of P2's agent
+story. Not in scope: templates, the Agent Studio UI, the onboarding wizard.
+
+### Changed
+
+| File | Change |
+|---|---|
+| `supabase/migrations/0006_agents.sql` | new — `agent_status` enum, `agents`, `agent_versions`, indexes, composite FKs |
+| `supabase/migrations/0007_agents_rls.sql` | new — privileges and policies |
+| `supabase/migrations/0008_agents_invariants.sql` | new — immutability and identity triggers |
+| `supabase/migrations/0009_agents_rpc.sql` | new — `create_agent`, `publish_agent_version`, `set_agent_archived` |
+| `tests/db/rls-suite.mjs` | group 10: 36 checks |
+| `src/modules/contracts/errors.ts` | `AGENT_ARCHIVED`, `AGENT_CONFIG_INVALID`, `AGENT_VERSION_IMMUTABLE` |
+| `tests/unit/contracts.test.ts` | asserts the three codes, asserts `AGENT_NOT_FOUND` is absent, size 21 → 24 |
+| `API_CONTRACT.md` | the three codes and why there is no `AGENT_NOT_FOUND` |
+| `docs/adr/0008-p2-agent-schema.md` | new |
+
+**Not applied to Supabase.** Verified only on the local cluster.
+
+### Commands and exact results
+
+| Command | Result |
+|---|---|
+| `npm run lint` | exit 0 |
+| `npm run typecheck` | exit 0 |
+| `npm run format:check` | exit 0 |
+| `npm test` | exit 0 — `Tests 133 passed (133)` |
+| `npm run build` | exit 0 |
+| `npm run test:e2e` | exit 0 — `18 passed (5.7s)` |
+| `npm run test:rls` | exit 0 — `PASS 93 FAIL 0 SKIP 0` |
+| secret scan (local) | `findings=0 errors=0 credential_files=0` |
+| gitleaks | not run locally (not installed); CI runs it over full history |
+
+### What the 36 new checks cover
+
+Cross-tenant negatives on both tables (0 rows, not an error); the role matrix
+including `viewer` read-only and the member/admin split on archiving; the four
+columns withheld from every customer role; published-version immutability from
+the policy *and* from the trigger that also binds the schema owner; three
+key-level rejections (second draft, cross-org version, cross-agent active
+version); and two concurrent publishes of one agent producing versions 1 and 2.
+
+### Four tests failed on first run — all four were test bugs
+
+Recorded because a test that passes for the wrong reason is exactly what this
+suite exists to catch, and three of these would have:
+
+1. Three fixtures called `create_agent()` as the schema owner, which has no
+   `auth.uid()`. The function correctly raised `AUTH_REQUIRED`; the assertions
+   were "denied" either way and would have passed had they not named an
+   expected message.
+2. "A version cannot be filed under a different org" was being rejected by the
+   one-draft-per-agent index, not by the composite foreign key it claimed to
+   test. Fixed by inserting it as a published row so the partial index does not
+   apply.
+3. "A draft cannot be moved to another agent" was operating on a version that
+   had been published earlier in the test, so the immutability guard answered
+   before the identity guard. Fixed by targeting the live draft.
+
+### Deliberate design choices, in full in ADR-0008
+
+- `version` nullable, assigned at publish under a row lock.
+- `agents.active_version_id` references `(agent_id, id)`, MATCH SIMPLE so drafts
+  are legal, DEFERRABLE so the circular reference can be cascaded through.
+- No DELETE trigger on `agent_versions`: it would make organisations
+  undeletable. The DELETE privilege is simply not granted.
+- No `AGENT_NOT_FOUND` code: unknown id and another org both answer
+  `ORG_ACCESS_DENIED`.
+
+### Not verified
+
+Everything in the previous entry's list, unchanged, plus: these four migrations
+have not been applied to Supabase and no PostgREST behaviour against them has
+been observed. There is no API route and no UI for agents yet.
+
+### Next
+
+P2 template catalog (`global_templates`, `global_template_versions`,
+`template_installations`), then the Agent Studio screens.

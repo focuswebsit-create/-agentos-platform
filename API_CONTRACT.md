@@ -72,6 +72,15 @@ failures indistinguishable to a client (ADR-0006):
 
 `MFA_REQUIRED`, `INVITATION_INVALID`, `ORG_SLUG_TAKEN`, `EMAIL_NOT_VERIFIED`, `STALE_ORG_CONTEXT`, `CSRF_INVALID`, `VALIDATION_FAILED`.
 
+Added in P2, for agents (ADR-0008):
+
+`AGENT_ARCHIVED`, `AGENT_CONFIG_INVALID`, `AGENT_VERSION_IMMUTABLE`.
+
+There is deliberately no `AGENT_NOT_FOUND`. An unknown agent id and an agent
+belonging to another organisation both answer `ORG_ACCESS_DENIED`, so the
+endpoint cannot be used to confirm that a given agent exists. `AGENT_VERSION_MISSING`
+(already in the taxonomy) covers an agent whose draft is absent.
+
 `INVITATION_INVALID` is deliberately **one** code for every invitation failure —
 unknown token, expired, revoked, already used, or addressed to someone else.
 Distinguishing them would turn the accept endpoint into an oracle for

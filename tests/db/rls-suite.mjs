@@ -762,6 +762,420 @@ try {
       await p.query("RESET ROLE");
     },
   );
+
+  /* ---- 10. agents and agent_versions (P2) ------------------------ */
+  g = "10-agents";
+  {
+    const ownerA = await makeUser(m, `ag-owner-a-${tag}@example.test`);
+    const orgA = await makeOrg(m, `org-ag-a-${tag}`, ownerA, 10);
+    const memberA = await makeUser(m, `ag-member-a-${tag}@example.test`);
+    const viewerA = await makeUser(m, `ag-viewer-a-${tag}@example.test`);
+    const adminA = await makeUser(m, `ag-admin-a-${tag}@example.test`);
+    await addMember(m, orgA, memberA, "member");
+    await addMember(m, orgA, viewerA, "viewer");
+    await addMember(m, orgA, adminA, "admin");
+
+    const ownerB = await makeUser(m, `ag-owner-b-${tag}@example.test`);
+    const orgB = await makeOrg(m, `org-ag-b-${tag}`, ownerB, 10);
+
+    // create_agent() re-derives the caller from auth.uid(), so fixture agents
+    // have to be created as a user. Doing it as the schema owner raises
+    // AUTH_REQUIRED, which is the function behaving correctly.
+    const mkAgent = async (name) => {
+      let id;
+      await act(t, memberA, async () => {
+        const r = await t.query(`select public.create_agent($1,$2,null) as id`, [orgA, name]);
+        id = r.rows[0].id;
+      });
+      return id;
+    };
+
+    /* -- creation and the role matrix -- */
+    let agentA;
+    await expectAllowed(g, "a member can create an agent", () =>
+      act(t, memberA, async () => {
+        const r = await t.query(`select public.create_agent($1,$2,$3) as id`, [
+          orgA,
+          "Support triage",
+          "demo",
+        ]);
+        agentA = r.rows[0].id;
+      }),
+    );
+    await expectDenied(
+      g,
+      "a viewer cannot create an agent",
+      () =>
+        act(t, viewerA, () =>
+          t.query(`select public.create_agent($1,$2,null)`, [orgA, "Viewer attempt"]),
+        ),
+      "ORG_ACCESS_DENIED",
+    );
+    await expectDenied(
+      g,
+      "an outsider cannot create an agent in someone else's org",
+      () =>
+        act(t, ownerB, () =>
+          t.query(`select public.create_agent($1,$2,null)`, [orgA, "Outsider attempt"]),
+        ),
+      "ORG_ACCESS_DENIED",
+    );
+
+    await expectRows(
+      g,
+      "create_agent opens exactly one draft",
+      () =>
+        m.query(`select 1 from public.agent_versions where agent_id=$1 and published_at is null`, [
+          agentA,
+        ]),
+      1,
+    );
+
+    /* -- cross-tenant reads: the release blocker in SECURITY.md 1 -- */
+    await expectRows(
+      g,
+      "org B owner sees 0 of org A's agents",
+      () => act(t, ownerB, () => t.query(`select id from public.agents where org_id=$1`, [orgA])),
+      0,
+    );
+    await expectRows(
+      g,
+      "org B owner sees 0 of org A's agent versions",
+      () =>
+        act(t, ownerB, () =>
+          t.query(`select id from public.agent_versions where org_id=$1`, [orgA]),
+        ),
+      0,
+    );
+    await expectRows(
+      g,
+      "a viewer in org A DOES see org A's agents",
+      () => act(t, viewerA, () => t.query(`select id from public.agents where org_id=$1`, [orgA])),
+      1,
+    );
+
+    /* -- editing the draft -- */
+    const draftId = (
+      await m.query(
+        `select id from public.agent_versions where agent_id=$1 and published_at is null`,
+        [agentA],
+      )
+    ).rows[0].id;
+
+    await expectRows(
+      g,
+      "a member can edit the draft config",
+      () =>
+        act(t, memberA, () =>
+          t.query(`update public.agent_versions set config_json=$2 where id=$1`, [
+            draftId,
+            JSON.stringify({ provider: "anthropic", model: "claude-x", max_steps: 5 }),
+          ]),
+        ),
+      1,
+    );
+    await expectRows(
+      g,
+      "a viewer editing the draft changes 0 rows (invisible, not an error)",
+      () =>
+        act(t, viewerA, () =>
+          t.query(`update public.agent_versions set config_json='{"x":1}'::jsonb where id=$1`, [
+            draftId,
+          ]),
+        ),
+      0,
+    );
+    await expectRows(
+      g,
+      "org B owner editing org A's draft changes 0 rows",
+      () =>
+        act(t, ownerB, () =>
+          t.query(`update public.agent_versions set config_json='{"x":1}'::jsonb where id=$1`, [
+            draftId,
+          ]),
+        ),
+      0,
+    );
+
+    /* -- columns withheld from every customer role -- */
+    for (const [col, val] of [
+      ["published_at", "now()"],
+      ["version", "1"],
+    ]) {
+      await expectDenied(
+        g,
+        `no role may write agent_versions.${col} directly`,
+        () =>
+          act(t, ownerA, () =>
+            t.query(`update public.agent_versions set ${col}=${val} where id=$1`, [draftId]),
+          ),
+        "permission denied",
+      );
+    }
+    for (const [col, val] of [
+      ["status", `'published'`],
+      ["active_version_id", `gen_random_uuid()`],
+      ["org_id", `gen_random_uuid()`],
+    ]) {
+      await expectDenied(
+        g,
+        `no role may write agents.${col} directly`,
+        () =>
+          act(t, ownerA, () =>
+            t.query(`update public.agents set ${col}=${val} where id=$1`, [agentA]),
+          ),
+        "permission denied",
+      );
+    }
+    await expectRows(
+      g,
+      "a member CAN rename an agent",
+      () =>
+        act(t, memberA, () =>
+          t.query(`update public.agents set name='Renamed' where id=$1`, [agentA]),
+        ),
+      1,
+    );
+    await expectRows(
+      g,
+      "a viewer renaming an agent changes 0 rows",
+      () =>
+        act(t, viewerA, () =>
+          t.query(`update public.agents set name='Viewer rename' where id=$1`, [agentA]),
+        ),
+      0,
+    );
+
+    /* -- publishing -- */
+    let v1;
+    await expectAllowed(g, "a member can publish the draft", () =>
+      act(t, memberA, async () => {
+        const r = await t.query(`select public.publish_agent_version($1) as out`, [agentA]);
+        v1 = r.rows[0].out;
+        if (v1.version !== 1) throw new Error(`expected version 1, got ${v1.version}`);
+      }),
+    );
+    {
+      const r = await m.query(`select status, active_version_id from public.agents where id=$1`, [
+        agentA,
+      ]);
+      const row = r.rows[0];
+      if (row.status === "published" && row.active_version_id === v1.version_id)
+        ok(g, "publishing sets status and points active_version_id at the frozen version");
+      else
+        bad(
+          g,
+          "publishing sets status and points active_version_id at the frozen version",
+          `got status=${row.status} active=${row.active_version_id} expected=${v1.version_id}`,
+        );
+    }
+    await expectRows(
+      g,
+      "publishing leaves exactly one fresh draft behind",
+      () =>
+        m.query(`select 1 from public.agent_versions where agent_id=$1 and published_at is null`, [
+          agentA,
+        ]),
+      1,
+    );
+    {
+      const r = await m.query(
+        `select config_json from public.agent_versions where agent_id=$1 and published_at is null`,
+        [agentA],
+      );
+      if (r.rows[0].config_json?.model === "claude-x")
+        ok(g, "the fresh draft carries the published configuration forward");
+      else
+        bad(
+          g,
+          "the fresh draft carries the published configuration forward",
+          `got ${JSON.stringify(r.rows[0].config_json)}`,
+        );
+    }
+
+    /* -- a published version is frozen -- */
+    await expectRows(
+      g,
+      "an owner editing a published version changes 0 rows (RLS)",
+      () =>
+        act(t, ownerA, () =>
+          t.query(
+            `update public.agent_versions set config_json='{"tampered":true}'::jsonb where id=$1`,
+            [v1.version_id],
+          ),
+        ),
+      0,
+    );
+    await expectDenied(
+      g,
+      "even the schema owner cannot edit a published version (trigger, not RLS)",
+      () =>
+        m.query(
+          `update public.agent_versions set config_json='{"tampered":true}'::jsonb where id=$1`,
+          [v1.version_id],
+        ),
+      "AGENT_VERSION_IMMUTABLE",
+    );
+    await expectDenied(
+      g,
+      "a draft cannot be moved to another agent",
+      async () => {
+        const other = await mkAgent("Other agent");
+        // The CURRENT draft, not `draftId`: that one was published above, so the
+        // immutability guard would answer first and the identity guard - the
+        // thing under test - would never run.
+        const live = (
+          await m.query(
+            `select id from public.agent_versions where agent_id=$1 and published_at is null`,
+            [agentA],
+          )
+        ).rows[0].id;
+        await m.query(`update public.agent_versions set agent_id=$2 where id=$1`, [live, other]);
+      },
+      "AGENT_VERSION_IDENTITY_IMMUTABLE",
+    );
+
+    /* -- keys, not conventions -- */
+    await expectDenied(
+      g,
+      "a second draft for the same agent is rejected by the unique index",
+      () =>
+        m.query(
+          `insert into public.agent_versions (org_id, agent_id, config_json) values ($1,$2,'{}'::jsonb)`,
+          [orgA, agentA],
+        ),
+      "agent_versions_one_draft_per_agent",
+    );
+    await expectDenied(
+      g,
+      "a version cannot be filed under a different org than its agent",
+      () =>
+        // Inserted as a published version on purpose: agentA already has a
+        // draft, so an unpublished row would trip the one-draft index first and
+        // the composite foreign key - the thing under test - would never be
+        // reached.
+        m.query(
+          `insert into public.agent_versions (org_id, agent_id, version, published_at, config_json)
+           values ($1,$2,99,now(),'{}'::jsonb)`,
+          [orgB, agentA],
+        ),
+      "agent_versions_agent_fk",
+    );
+    await expectDenied(
+      g,
+      "active_version_id cannot point at another agent's version",
+      async () => {
+        const agentC = await mkAgent("Agent C");
+        await m.query(`update public.agents set active_version_id=$2 where id=$1`, [
+          agentC,
+          v1.version_id,
+        ]);
+      },
+      "agents_active_version_fk",
+    );
+
+    /* -- publish guards -- */
+    await expectDenied(
+      g,
+      "publishing an empty configuration is refused",
+      async () => {
+        const empty = await mkAgent("Empty agent");
+        await act(t, memberA, () => t.query(`select public.publish_agent_version($1)`, [empty]));
+      },
+      "AGENT_CONFIG_INVALID",
+    );
+    await expectDenied(
+      g,
+      "org B owner cannot publish org A's agent",
+      () => act(t, ownerB, () => t.query(`select public.publish_agent_version($1)`, [agentA])),
+      "ORG_ACCESS_DENIED",
+    );
+    await expectDenied(
+      g,
+      "a viewer cannot publish",
+      () => act(t, viewerA, () => t.query(`select public.publish_agent_version($1)`, [agentA])),
+      "ORG_ACCESS_DENIED",
+    );
+
+    /* -- archiving -- */
+    await expectDenied(
+      g,
+      "a member cannot archive an agent",
+      () => act(t, memberA, () => t.query(`select public.set_agent_archived($1,true)`, [agentA])),
+      "ORG_ACCESS_DENIED",
+    );
+    await expectAllowed(g, "an admin can archive an agent", () =>
+      act(t, adminA, () => t.query(`select public.set_agent_archived($1,true)`, [agentA])),
+    );
+    await expectDenied(
+      g,
+      "an archived agent cannot be published",
+      () => act(t, memberA, () => t.query(`select public.publish_agent_version($1)`, [agentA])),
+      "AGENT_ARCHIVED",
+    );
+    await expectRows(
+      g,
+      "a member cannot rename an archived agent",
+      () =>
+        act(t, memberA, () =>
+          t.query(`update public.agents set name='Rename archived' where id=$1`, [agentA]),
+        ),
+      0,
+    );
+    await expectAllowed(g, "restoring returns it to 'published', not to 'draft'", () =>
+      act(t, adminA, async () => {
+        const r = await t.query(`select public.set_agent_archived($1,false) as s`, [agentA]);
+        if (r.rows[0].s !== "published") throw new Error(`got status ${r.rows[0].s}`);
+      }),
+    );
+
+    /* -- publish under concurrency -- */
+    {
+      const racer = await mkAgent("Race agent");
+      await m.query(
+        `update public.agent_versions set config_json='{"model":"m"}'::jsonb
+         where agent_id=$1 and published_at is null`,
+        [racer],
+      );
+
+      const c1 = asMigrator(),
+        c2 = asMigrator();
+      await c1.connect();
+      await c2.connect();
+      const claims = JSON.stringify({ sub: memberA, role: "authenticated", aal: "aal1" });
+      for (const c of [c1, c2]) {
+        await c.query("SELECT set_config('request.jwt.claims', $1, false)", [claims]);
+        await c.query("BEGIN");
+      }
+      const p1 = c1.query(`select public.publish_agent_version($1) as out`, [racer]);
+      await new Promise((r) => setTimeout(r, 150)); // let c1 take the agent row lock
+      const p2 = c2.query(`select public.publish_agent_version($1) as out`, [racer]);
+      const r1 = await p1.then((r) => r.rows[0].out.version).catch((e) => e.message);
+      await c1.query("COMMIT").catch(() => {});
+      const r2 = await p2.then((r) => r.rows[0].out.version).catch((e) => e.message);
+      await c2.query("COMMIT").catch(() => {});
+      await c1.end();
+      await c2.end();
+
+      const { rows: nums } = await m.query(
+        `select version from public.agent_versions
+         where agent_id=$1 and version is not null order by version`,
+        [racer],
+      );
+      const distinct = new Set(nums.map((r) => r.version));
+      if (distinct.size === nums.length && nums.length >= 1)
+        ok(
+          g,
+          `two concurrent publishes produced no duplicate version number (got [${r1}] / [${r2}])`,
+        );
+      else
+        bad(
+          g,
+          "two concurrent publishes produced no duplicate version number",
+          `versions in table: ${nums.map((r) => r.version).join(",")} (outcomes [${r1}] / [${r2}])`,
+        );
+    }
+  }
 } finally {
   await m.end().catch(() => {});
   await t.end().catch(() => {});

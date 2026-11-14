@@ -176,12 +176,63 @@ the Supabase shim — not against Supabase.
 
 ---
 
+## P2 begins: the agent schema
+
+Four migrations, none applied to Supabase: `0006_agents.sql` (tables),
+`0007_agents_rls.sql` (privileges and policies), `0008_agents_invariants.sql`
+(triggers) and `0009_agents_rpc.sql` (`create_agent`, `publish_agent_version`,
+`set_agent_archived`). `docs/adr/0008-p2-agent-schema.md` records the reasoning.
+
+Three choices are worth knowing before reading the SQL:
+
+**Version numbers are assigned at publish, not at draft creation.** `version` is
+nullable with a CHECK tying it to `published_at`, so a row is either an
+unnumbered draft or a numbered published version and nothing else can be
+represented. Numbering drafts burns a number on every abandoned one and gives
+two concurrent drafters the same number. Numbering at publish under
+`select ... for update` removes the race instead of detecting it.
+
+**The active-version pointer references `(agent_id, id)`, not `(org_id, id)`.**
+That rejects an agent pointing at another agent's version, and org containment
+follows transitively from `agent_versions`' own composite key. One key, both
+guarantees, checked by PostgreSQL on every write — including one arriving
+straight through PostgREST with a forged body.
+
+**Immutability is enforced twice; deletion is not enforced at all.** The policy
+keeps customers off published rows; a trigger repeats it for the service role
+and the schema owner, which RLS does not constrain. There is deliberately no
+DELETE trigger: deleting an organisation cascades to its versions, a trigger
+cannot tell a cascade from a direct delete, and a DELETE guard would make
+organisations undeletable — turning a rule about editing history into a block on
+erasure requests.
+
+`member` can publish; only `owner` and `admin` can archive. A team whose members
+need an admin for every change is not what a five-seat business is buying, and
+spend is bounded by P3's per-run budget caps rather than by who pressed publish.
+
+**36 new checks, `PASS 93 FAIL 0 SKIP 0`**, still against local PostgreSQL 16
+with the Supabase shim. They include both cross-tenant negatives, the full role
+matrix, the withheld columns (`published_at`, `version`, `status`,
+`active_version_id`), published-version immutability from both RLS and the
+trigger, the three key-level rejections, and two concurrent publishes of the same
+agent producing versions 1 and 2 with no duplicate and no spurious error.
+
+Four of those checks failed on first run, all four for bugs in the tests rather
+than in the schema: fixture agents were created as the schema owner, where
+`create_agent()` correctly answers `AUTH_REQUIRED`, and two assertions were
+reaching a different constraint than the one they named. Worth recording,
+because a test that passes for the wrong reason is the failure mode this suite
+exists to prevent.
+
+---
+
 ## Decisions on record
 
 `docs/adr/0001` single app · `0002` admin boundary in P1, dashboards in P6 ·
 `0003` MFA scope · `0004` local DB verification without Docker ·
 `0005` active-organisation cookie and its two-tab limit ·
-`0006` schema additions beyond `DATA_MODEL.md` · `0007` prepared OAuth path.
+`0006` schema additions beyond `DATA_MODEL.md` · `0007` prepared OAuth path ·
+`0008` P2 agent and version schema.
 
 ---
 
@@ -198,9 +249,11 @@ gate at the UI layer, not only at the database layer.
 chain is proven end to end would build on an untested foundation.
 
 ### Independent of the blockers, and safe to start now
-- **P2 groundwork: `agents` / `agent_versions` migrations with RLS**, following
-  the same layered pattern, verified on the local cluster with
-  `npm run test:rls`. This is the next task in progress.
+- **P2: template catalog** — `global_templates`, `global_template_versions`
+  and `template_installations`, which deliver the other half of the P2 gate
+  ("install copy; unauthorized template editing denied").
+- **P2: the Agent Studio screens** — the agent list, the draft editor and the
+  publish action, on top of the RPCs that now exist.
 - The remaining `/app` section pages (agents, runs, workflows, …) still render
   P0 empty states inside a shell that is now real. The overview page has been
   corrected; the rest carry the same stale "not connected" wording.
