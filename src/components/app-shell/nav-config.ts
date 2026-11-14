@@ -68,8 +68,8 @@ export const APP_NAV: readonly AppNavItem[] = [
   { key: "integrations", href: "/app/integrations", icon: PlugIcon, group: "operate", phase: "P4" },
   { key: "analytics", href: "/app/analytics", icon: BarChart3Icon, group: "operate", phase: "P6" },
   { key: "billing", href: "/app/billing", icon: CreditCardIcon, group: "account", phase: "P5" },
-  { key: "team", href: "/app/team", icon: UsersIcon, group: "account", phase: "P1" },
-  { key: "settings", href: "/app/settings", icon: SettingsIcon, group: "account", phase: "P1" },
+  { key: "team", href: "/app/team", icon: UsersIcon, group: "account", phase: null },
+  { key: "settings", href: "/app/settings", icon: SettingsIcon, group: "account", phase: null },
 ];
 
 export function getNavItem(key: AppNavKey): AppNavItem {

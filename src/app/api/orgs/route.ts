@@ -1,7 +1,9 @@
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
 import { createSupabaseServerClient } from "@/modules/supabase/server";
-import { CreateOrgSchema } from "@/modules/contracts";
+import { CreateOrgSchema, OrgNameSchema } from "@/modules/contracts";
+import { z } from "zod";
+import { guardApi } from "@/modules/api/guard";
 import { ACTIVE_ORG_COOKIE, activeOrgCookieAttributes } from "@/modules/tenancy";
 import { CSRF_COOKIE, CSRF_HEADER } from "@/modules/tenancy/cookie";
 import { verifyCsrf } from "@/modules/tenancy/csrf";
@@ -75,4 +77,71 @@ export async function POST(request: NextRequest) {
   );
 
   return okJson({ orgId, requestId }, { status: 201 });
+}
+
+const UpdateOrgSchema = z.object({
+  orgId: z.uuid(),
+  name: OrgNameSchema,
+  locale: z.enum(["he", "en"]),
+  timezone: z.string().trim().min(1).max(64),
+});
+
+/**
+ * PATCH /api/orgs — update the active organisation.
+ *
+ * Only name, locale and timezone. `seat_limit` and `status` are absent on
+ * purpose: migration 0003 withholds the UPDATE column privilege on both, so
+ * even if this route tried, PostgreSQL would refuse. A customer cannot raise
+ * their own quota or clear their own suspension.
+ */
+export async function PATCH(request: NextRequest) {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return problem("VALIDATION_FAILED", "בקשה לא תקינה.");
+  }
+
+  const parsed = UpdateOrgSchema.safeParse(body);
+  if (!parsed.success) {
+    return problem("VALIDATION_FAILED", "פרטי הארגון אינם תקינים.");
+  }
+
+  const guard = await guardApi(request, {
+    action: "org.update",
+    mutation: true,
+    submittedOrgId: parsed.data.orgId,
+  });
+  if (!guard.ok) return guard.response;
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("organizations")
+    .update({
+      name: parsed.data.name,
+      locale: parsed.data.locale,
+      timezone: parsed.data.timezone,
+    })
+    .eq("id", guard.context.orgId)
+    .select("id");
+
+  if (error) {
+    const mapped = mapDatabaseError(error.message);
+    return problem(mapped.code, mapped.message, guard.requestId);
+  }
+  if (!data || data.length === 0) {
+    // RLS refused it, which means the policy is stricter than the guard above.
+    return problem("ORG_ACCESS_DENIED", "אין לכם הרשאה לערוך את הארגון.", guard.requestId);
+  }
+
+  await supabase.rpc("log_audit", {
+    p_org_id: guard.context.orgId,
+    p_actor_type: "user",
+    p_action: "organization.updated",
+    p_entity_type: "organization",
+    p_entity_id: guard.context.orgId,
+    p_metadata: { locale: parsed.data.locale, timezone: parsed.data.timezone },
+  });
+
+  return okJson({ updated: true, requestId: guard.requestId });
 }

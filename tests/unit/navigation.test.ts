@@ -37,11 +37,27 @@ describe("customer sidebar", () => {
     expect(existsSync(pageFileFor(href))).toBe(true);
   });
 
-  it("every item has a label and every non-dashboard item has a planned phase", () => {
+  it("every item has a label", () => {
     const t = getDictionary();
     for (const item of APP_NAV) {
       expect(t.app.nav[item.key]).toBeTruthy();
-      if (item.key !== "dashboard") expect(item.phase).not.toBeNull();
+    }
+  });
+
+  it("a phase marker means not built yet, and only sections that are not built carry one", () => {
+    // P0 asserted that every non-dashboard item had a phase, because none of
+    // them existed. P1 delivers team and settings, so marking them "arrives in
+    // phase P1" would now be a false label on a working screen.
+    const DELIVERED = new Set(["dashboard", "team", "settings"]);
+    for (const item of APP_NAV) {
+      if (DELIVERED.has(item.key)) {
+        expect(item.phase, `${item.key} is delivered and must carry no phase`).toBeNull();
+      } else {
+        expect(
+          item.phase,
+          `${item.key} is not built and must say which phase delivers it`,
+        ).not.toBeNull();
+      }
     }
   });
 

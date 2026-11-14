@@ -12,7 +12,9 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test --trace off",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "db:reapply": "bash scripts/db-reapply.sh",
+    "test:rls": "bash scripts/db-reapply.sh && node tests/db/rls-suite.mjs"
   },
   "dependencies": {
     "@fontsource-variable/heebo": "5.3.0",

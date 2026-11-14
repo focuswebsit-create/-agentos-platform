@@ -125,6 +125,57 @@ redirecting from inside the page.
 
 ---
 
+## Organisation settings, and a gate that could lie
+
+`/app/settings` now renames an organisation and sets its locale and timezone,
+behind `PATCH /api/orgs`. Until now an organisation could be created and never
+corrected, which made the name a one-shot decision at signup.
+
+`UpdateOrgSchema` accepts `name`, `locale` and `timezone` and nothing else.
+`seat_limit` and `status` are absent on purpose: migration 0003 grants
+`update (name, locale, timezone)` only, so a request carrying either would be
+refused by PostgreSQL regardless. The schema and the grant say the same thing,
+and the database is the one that enforces it.
+
+The form first shipped with `locale` and `timezone` hardcoded to `"he"` and
+`"Asia/Jerusalem"` because `OrgContext` did not carry them — so an organisation
+that had set anything else would have seen the defaults, and saving the form
+would have silently reset its real values. `resolveOrgContext()` now selects
+both columns and passes them through. Members can read them: 0003 grants
+`select` on the whole table, and withholds columns only on `update`.
+
+`team` and `settings` no longer carry a "P1" phase marker in the sidebar; they
+are built. `tests/unit/navigation.test.ts` was rewritten to assert the rule in
+both directions — a delivered section must carry no marker, and an unbuilt one
+must say which phase delivers it — so the next delivered page fails the test
+until its marker is removed, instead of advertising a finished feature as
+pending forever.
+
+### The RLS gate was reporting on the wrong schema
+
+Re-running `tests/db/rls-suite.mjs` produced 5 failures that were not
+regressions: `log_platform_audit` and the `service_role` grant on
+`platform_admins` had been added to the migration files after the local
+database was last built, so the suite was testing an older schema than the one
+in the repository.
+
+Five false failures are a nuisance. The same gap in the other direction is not:
+a policy deleted from a migration would keep passing, because the old one is
+still sitting in the cluster. The suite never created the schema it tested.
+
+`scripts/db-reapply.sh` now rebuilds `public` and `auth` from
+`supabase/tests/01_supabase_shim.sql` plus every `supabase/migrations/*.sql`,
+one transaction per file under `ON_ERROR_STOP`, and `npm run test:rls` runs it
+before the suite. It refuses to start unless `PGHOST` is a unix socket path and
+`PGDATABASE` is the disposable test database by name — the verification cluster
+has no TCP listener, so a hostname there would mean the target is something
+else, and the something else this must never reach is a Supabase project.
+
+After the rebuild: **PASS 57 FAIL 0 SKIP 0**, against local PostgreSQL 16 with
+the Supabase shim — not against Supabase.
+
+---
+
 ## Decisions on record
 
 `docs/adr/0001` single app · `0002` admin boundary in P1, dashboards in P6 ·
@@ -147,8 +198,9 @@ gate at the UI layer, not only at the database layer.
 chain is proven end to end would build on an untested foundation.
 
 ### Independent of the blockers, and safe to start now
-- P2 groundwork: `agents` / `agent_versions` migrations with RLS, following
-  the same layered pattern, verified on the local cluster.
+- **P2 groundwork: `agents` / `agent_versions` migrations with RLS**, following
+  the same layered pattern, verified on the local cluster with
+  `npm run test:rls`. This is the next task in progress.
 - The remaining `/app` section pages (agents, runs, workflows, …) still render
   P0 empty states inside a shell that is now real. The overview page has been
   corrected; the rest carry the same stale "not connected" wording.

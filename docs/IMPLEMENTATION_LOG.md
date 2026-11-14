@@ -190,3 +190,71 @@ UI-level two-organisation E2E against Supabase Development, once the
 migrations are applied: sign up → confirm → create organisation → invite →
 accept from a second account → verify the second account cannot read the
 first organisation. Then P2 (agents and templates) — not before.
+
+---
+
+## 2026-11-14 — organisation settings, and making the RLS gate honest
+
+### Changed
+
+| File | Change |
+|---|---|
+| `src/app/api/orgs/route.ts` | `PATCH` handler + `UpdateOrgSchema` (`name`, `locale`, `timezone` only) |
+| `src/components/settings/org-settings-form.tsx` | new — the settings form |
+| `src/app/app/settings/page.tsx` | real screen, replacing the P0 placeholder |
+| `src/modules/tenancy/context.ts` | `Membership`/`OrgContext` carry `orgLocale` and `orgTimezone`; `listMemberships` selects them |
+| `src/components/app-shell/nav-config.ts` | `team` and `settings` → `phase: null` |
+| `tests/unit/navigation.test.ts` | assertion rewritten to check the rule in both directions |
+| `src/i18n/{he,en}.ts` | `orgSettings` block |
+| `scripts/db-reapply.sh` | new — rebuilds the local verification schema from the migration files |
+| `package.json` | `db:reapply`, `test:rls` |
+
+No migration was added or edited. No Supabase operation of any kind.
+
+### Commands and exact results
+
+| Command | Result |
+|---|---|
+| `npm run lint` | exit 0 |
+| `npm run typecheck` | exit 0 |
+| `npm run format:check` | exit 0 — `All matched files use Prettier code style!` |
+| `npm test` | exit 0 — `Tests 132 passed (132)` |
+| `npm run build` | exit 0 |
+| `npm run test:e2e` | exit 0 — `18 passed (6.2s)` |
+| `npm run test:rls` | exit 0 — `PASS 57 FAIL 0 SKIP 0` |
+| secret scan (local) | `findings=0 errors=0 credential_files=0` |
+| gitleaks | **not run locally** — not installed. CI runs v8.30.1 over full history on pushes to `claude/**` |
+
+### Two defects found and fixed in this step
+
+**1. The settings form would have reset real values.** It passed
+`locale: "he"` and `timezone: "Asia/Jerusalem"` as the form's initial state
+because `OrgContext` did not carry those columns. An organisation that had set
+anything else would have been shown the defaults, and the first save would have
+written them over the real values without anyone touching those fields. Fixed by
+selecting both columns in `listMemberships` and threading them through.
+
+**2. The RLS suite was testing a stale schema.** The first run after the change
+reported 5 failures. None were regressions: `log_platform_audit()` and
+`grant select on public.platform_admins to service_role` had been added to the
+migrations after the local database was last built, and the suite does not
+create the schema it tests.
+
+The direction that matters is the opposite one. A policy *removed* from a
+migration would still have passed, because the old policy was still live in the
+cluster — a green gate asserting something the repository no longer says.
+`scripts/db-reapply.sh` closes this: drop `public` and `auth`, recreate from the
+shim plus every migration file, one transaction per file under `ON_ERROR_STOP`.
+It refuses to run unless `PGHOST` is a unix socket path and `PGDATABASE` is the
+disposable test database, so it cannot be aimed at a network host.
+
+### Not verified
+
+Unchanged from the previous entry. The seven items in `docs/SUPABASE_SETUP.md`
+still stand; `PATCH /api/orgs` has been exercised against the local schema's
+grants, **not** against Supabase or PostgREST.
+
+### Next
+
+P2 groundwork: `agents` / `agent_versions` migrations with RLS, verified with
+`npm run test:rls`.

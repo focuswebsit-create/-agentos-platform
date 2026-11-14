@@ -25,6 +25,8 @@ export type Membership = {
   orgName: string;
   role: OrgRole;
   orgStatus: "active" | "suspended";
+  orgLocale: "he" | "en";
+  orgTimezone: string;
 };
 
 export type OrgContext = {
@@ -34,6 +36,8 @@ export type OrgContext = {
   orgName: string;
   role: OrgRole;
   orgStatus: "active" | "suspended";
+  orgLocale: "he" | "en";
+  orgTimezone: string;
   /** Every organisation this user belongs to, for the workspace switcher. */
   memberships: readonly Membership[];
   /** True when the cookie named an organisation the user cannot access. */
@@ -53,6 +57,8 @@ type MembershipRow = {
     slug: string;
     name: string;
     status: "active" | "suspended";
+    locale: "he" | "en";
+    timezone: string;
   } | null;
 };
 
@@ -76,7 +82,7 @@ export async function listMemberships(): Promise<{
   // the second of the two checks DATA_MODEL.md requires, not a substitute.
   const { data, error } = await supabase
     .from("memberships")
-    .select("org_id, role, organizations!inner(id, slug, name, status)")
+    .select("org_id, role, organizations!inner(id, slug, name, status, locale, timezone)")
     .eq("user_id", userId)
     .order("created_at", { ascending: true });
 
@@ -95,6 +101,8 @@ export async function listMemberships(): Promise<{
       orgName: row.organizations.name,
       role: row.role,
       orgStatus: row.organizations.status,
+      orgLocale: row.organizations.locale,
+      orgTimezone: row.organizations.timezone,
     }));
 
   return { userId, memberships };
@@ -124,6 +132,8 @@ export async function resolveOrgContext(): Promise<OrgResolution> {
       orgName: active.orgName,
       role: active.role,
       orgStatus: active.orgStatus,
+      orgLocale: active.orgLocale,
+      orgTimezone: active.orgTimezone,
       memberships,
       cookieWasStale: Boolean(requested) && !matched,
     },
