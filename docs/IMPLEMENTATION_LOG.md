@@ -1181,3 +1181,105 @@ next step obvious to whoever opens it.
 ### Next
 
 P4 schema: teams, knowledge bases, documents, approvals.
+
+---
+
+## 2026-11-14 — "the variables are set and it still says not configured"
+
+### Root cause
+
+Two bugs. The second was invisible without an experiment.
+
+**1. The values never reached the browser.** `src/config/env.ts` read them as
+`source.NEXT_PUBLIC_SUPABASE_URL`, with `source` a parameter defaulting to
+`process.env`. That is a dynamic property access. `NEXT_PUBLIC_*` reaches a
+browser only because Next.js replaces the literal text
+`process.env.NEXT_PUBLIC_X` while the build runs — a browser has no
+`process.env` — so the bundler saw no pattern and substituted nothing.
+
+Measured: a build with both variables set produced **zero** client chunks
+containing the URL value. After the fix, one each. Every browser-side auth call
+was therefore throwing "not configured" whatever the host had.
+
+`getSiteUrl()` had the identical defect, with no client caller yet.
+
+**2. The notice is decided at build time.** Reproduced exactly: build with the
+variables absent, run with them present, and `/sign-in`, `/sign-up` and
+`/forgot-password` all still serve the notice while the server reports
+configured at runtime. The auth layout's answer is in the prerendered shell.
+
+Which means the baked answer was **correct** — a bundle built without the
+variables cannot sign anyone in — and the real gap was that this is
+indistinguishable from a missing variable from outside.
+
+### Changed
+
+| File | Change |
+|---|---|
+| `src/config/env.ts` | module-scope literal reads for both pairs; values trimmed; new `describeSupabasePublicEnv()` |
+| `src/app/diagnostics/config/page.tsx` | new — four booleans, server and browser side by side, with a verdict |
+| `src/components/shared/config-report.tsx` | new — the browser half |
+| `src/app/api/diagnostics/config/route.ts` | new — the server half as JSON |
+| `docs/DEPLOYMENT.md` | a section on why `NEXT_PUBLIC_*` is build-time, and the four-case table |
+| `tests/unit/public-env.test.ts` | new — 12 checks, including a source-text guard against the dynamic read |
+| `tests/e2e/smoke.spec.ts` | both diagnostic surfaces return booleans only and leak no value |
+
+### Commands and exact results
+
+| Command | Result |
+|---|---|
+| `npm run lint` | exit 0 |
+| `npm run typecheck` | exit 0 |
+| `npm run format:check` | exit 0 |
+| `npm test` | exit 0 — `Tests 204 passed (204)` |
+| `npm run build` | exit 0 |
+| `npm run test:e2e` (configured) | exit 0 — `34 passed` |
+| e2e against a build with the variables unset | `31 passed, 3 skipped, 0 failed` |
+| `npm run test:rls` | exit 0 — `PASS 174 FAIL 0 SKIP 0` |
+| secret scan | `findings=0` (after the fixture fix below) |
+
+### Measurements that drove the fix
+
+| Check | Before | After |
+|---|---|---|
+| client chunks containing the URL value | 0 | 1 |
+| client chunks containing the key value | 0 | 1 |
+| built-without / run-with: server report | configured | configured |
+| built-without / run-with: **browser** report | — | **not configured** |
+| built-without / run-with: `/sign-in` notice | shown | shown (correctly) |
+| built-with / run-with: `/sign-in` notice | — | absent, form present |
+
+### Three things that went wrong while fixing it
+
+1. **`dynamic = "force-dynamic"` is rejected under `cacheComponents`.** The
+   build failed with the config option named. Replaced with `connection()`.
+2. **`instant = false` alone left the page static.** The build output said `○`,
+   so the server half would have been baked — destroying the only thing the
+   page is for. Both `instant = false` and `await connection()` are needed, and
+   the comment in the file says so.
+3. **The secret scanner flagged my own test fixtures** — a 20-character project
+   ref before `.supabase.co`, and an `sb_publishable_` prefix. Allowlisting the
+   file was the easy fix and would have left a hole in the file most likely to
+   grow a real key. The fixtures are assembled at runtime instead: identical
+   values, no credential-shaped literal in the source.
+
+### Also fixed
+
+Values are trimmed before validation. A value pasted into a dashboard field
+often carries a trailing newline; `z.url()` rejects
+`"https://x.supabase.co\n"`, which read as absent and looked exactly like a
+missing variable.
+
+### How to verify the next Preview
+
+1. Open `/diagnostics/config` on the preview.
+2. Four rows, two columns. All eight true → configured; a sign-in failure is
+   then the Supabase project, not the configuration.
+3. Server true / browser false → the build ran before the variables were set.
+   Rebuild **without** the build cache.
+
+### Not verified
+
+The preview itself. The network here blocks `*.vercel.app` and `vercel.com`, so
+the page can only be exercised against a local production build — which it was,
+in both configurations.

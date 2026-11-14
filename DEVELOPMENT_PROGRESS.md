@@ -669,6 +669,65 @@ now mean.
 
 ---
 
+## "The variables are set and it still says not configured"
+
+Two bugs, both mine, and the second was invisible without an experiment.
+
+**Bug 1 — the values never reached the browser.** `src/config/env.ts` read them
+as `source.NEXT_PUBLIC_SUPABASE_URL`, with `source` a parameter defaulting to
+`process.env`. That is a dynamic property access. `NEXT_PUBLIC_*` reaches a
+browser only because Next.js replaces the *literal text*
+`process.env.NEXT_PUBLIC_X` during the build — a browser has no `process.env`
+to read — so the bundler saw no pattern and substituted nothing.
+
+Measured, not inferred: a build with both variables set produced **zero** client
+chunks containing the URL. After the fix, one each. The browser client was
+therefore throwing "not configured" on every call regardless of what the host
+had.
+
+`getSiteUrl()` had the same defect. It has no client caller today, which is
+when a trap like that is cheapest to remove.
+
+**Bug 2 — the notice was decided at build time.** Reproduced exactly: build
+with the variables absent, run with them present, and all three auth routes
+still serve the notice. The server reports configured at runtime and the page
+disagrees, because the auth layout's answer is baked into the prerendered
+shell.
+
+Which means **the baked answer was right**: a bundle built without the
+variables genuinely cannot sign anyone in. The screen was telling the truth
+about itself. What was missing was any way to tell that apart from a missing
+variable — they look identical from outside.
+
+### `/diagnostics/config`
+
+Four booleans, twice: as the server sees them and as the browser sees them.
+Their disagreement is the whole diagnosis, and in the reproduction it says so
+in words — *"the build ran before the variables were set; a restart or a cached
+redeploy cannot fix this"*. `GET /api/diagnostics/config` returns the server
+half as JSON. No value, no fragment, no length, no prefix.
+
+Both routes needed `instant = false` **and** `await connection()`. With only the
+first, Next saw nothing dynamic and prerendered the page — baking in the
+build's answer and destroying the only thing the page is for.
+
+### Also fixed, and also a cause of false "not configured"
+
+Values are trimmed before validation. A value pasted into a dashboard field
+often carries a trailing newline, and `z.url()` rejects
+`"https://x.supabase.co\n"` — which then reads as absent and sends everyone
+hunting for a variable that is present and correct.
+
+### The secret scanner caught my own test fixtures
+
+Two findings, both in the new test file: a 20-character project ref before
+`.supabase.co`, and an `sb_publishable_` prefix. Allowlisting the file was the
+easy fix and would have left a hole in the file most likely to grow a real key
+later. The fixtures are assembled at runtime instead — identical values, no
+credential-shaped literal in the source.
+
+---
+
 ## Decisions on record
 
 `docs/adr/0001` single app · `0002` admin boundary in P1, dashboards in P6 ·

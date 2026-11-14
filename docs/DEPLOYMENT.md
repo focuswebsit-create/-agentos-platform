@@ -67,7 +67,47 @@ has no way to verify a project's name.
 `supabase/seed/dev_templates.sql` is **development only** and lives outside
 `migrations/` so nothing that applies migrations can apply it by accident.
 
-## 3. Diagnosing a stuck auth screen
+## 3. `NEXT_PUBLIC_*` is a build-time value, not a runtime one
+
+This is the single most confusing thing about these two variables, and it was
+the root cause of "the variables are set in Vercel and the screen still says
+not configured".
+
+A browser has no `process.env`. The only way a `NEXT_PUBLIC_*` value reaches
+one is that Next.js **replaces the literal text** `process.env.NEXT_PUBLIC_X`
+with the value while the build runs. It is a textual substitution.
+
+Two consequences:
+
+1. **The read has to be literal.** `source.NEXT_PUBLIC_SUPABASE_URL`, where
+   `source` is a parameter, is a dynamic property access. The bundler never
+   sees the pattern and substitutes nothing, so the value is absent from the
+   client bundle no matter what the host has. This project had exactly that
+   bug; `tests/unit/public-env.test.ts` now asserts against it.
+2. **Setting the variable after a build changes nothing.** The value is in the
+   bundle or it is not. A restart cannot add it. Neither can a redeploy that
+   reuses a cached build. The build has to run with the variables present.
+
+So "the variable is set in the dashboard" and "the browser can sign in" are
+**not the same statement**, and the first does not imply the second.
+
+### `/diagnostics/config` tells you which
+
+The page shows the four checks twice — once as the server sees them (the live
+process) and once as the browser sees them (whatever the build baked in). The
+disagreement is the diagnosis:
+
+| Server | Browser | Meaning |
+|---|---|---|
+| true | true | Configured. A sign-in failure is something else — check the Supabase project is running. |
+| **true** | **false** | **The build ran before the variables were set.** They are on the host and not in the bundle. Rebuild without the build cache. |
+| false | false | Genuinely absent. Set them for this environment, then rebuild. |
+| false | true | The host lost a variable the build had. |
+
+`GET /api/diagnostics/config` returns the server half as JSON. Both show four
+booleans and never any part of a value.
+
+## 4. Diagnosing a stuck auth screen
 
 Before this change, a failed request left the button on "רגע…" indefinitely:
 the Supabase client call was not inside a try/catch, so a throw became an

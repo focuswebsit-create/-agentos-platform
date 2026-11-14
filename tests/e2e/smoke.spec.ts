@@ -89,6 +89,47 @@ test.describe("an unconfigured deployment says so instead of hanging", () => {
   }
 });
 
+test("the config diagnostics page reports four booleans and no values", async ({ page }) => {
+  // Reachable without signing in, on purpose: it is the page you need when you
+  // cannot sign in. Safe to be public: four booleans about two variables that
+  // are shipped to every browser by design, and never a part of a value.
+  await page.goto("/diagnostics/config");
+  const report = page.getByTestId("config-report");
+  await expect(report).toBeVisible();
+
+  const text = await report.innerText();
+  for (const label of [
+    "URL configured",
+    "URL valid",
+    "Publishable key configured",
+    "Key format valid",
+  ]) {
+    expect(text).toContain(label);
+  }
+  // Server column and browser column: their disagreement is the diagnosis.
+  expect(text).toContain("Server");
+  expect(text).toContain("Browser");
+  await expect(page.getByTestId("config-verdict")).toBeVisible();
+
+  // No value, no fragment of one.
+  expect(text).not.toMatch(/sb_publishable_|sb_secret_|supabase\.co/);
+});
+
+test("the config diagnostics API returns booleans only", async ({ request }) => {
+  const res = await request.get("/api/diagnostics/config");
+  expect(res.status()).toBe(200);
+  const body = (await res.json()) as Record<string, unknown>;
+  expect(Object.keys(body).sort()).toEqual([
+    "keyFormatValid",
+    "publishableKeyConfigured",
+    "urlConfigured",
+    "urlValid",
+  ]);
+  for (const value of Object.values(body)) expect(typeof value).toBe("boolean");
+  // A value here would be a leak in a public endpoint.
+  expect(JSON.stringify(body)).not.toMatch(/https?:|sb_publishable_|sb_secret_/);
+});
+
 test.describe("private routes are closed to anonymous visitors", () => {
   for (const route of PRIVATE_ROUTES) {
     test(`${route} redirects to sign-in`, async ({ page }) => {

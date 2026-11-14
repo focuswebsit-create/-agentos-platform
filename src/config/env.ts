@@ -24,7 +24,18 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
   return result.data;
 }
 
-export function getSiteUrl(source: Record<string, string | undefined> = process.env) {
+/**
+ * Read from a module-scope constant for the same reason as the Supabase pair
+ * below: a parameter defaulting to `process.env` is a dynamic access that the
+ * bundler cannot substitute, so the value would be absent in any client bundle
+ * that ever reached this. It has no client caller today, which is exactly when
+ * a trap like this is cheapest to remove.
+ */
+const INLINED_SITE_ENV: Record<string, string | undefined> = {
+  NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
+};
+
+export function getSiteUrl(source: Record<string, string | undefined> = INLINED_SITE_ENV) {
   return parseServerEnv(source).NEXT_PUBLIC_SITE_URL;
 }
 
@@ -56,15 +67,58 @@ const SupabasePublicEnvSchema = z.object({
 export type SupabasePublicEnv = z.infer<typeof SupabasePublicEnvSchema>;
 
 /**
+ * THE TWO READS BELOW MUST STAY EXACTLY AS WRITTEN: a literal
+ * `process.env.NEXT_PUBLIC_…` on the right-hand side, at module scope.
+ *
+ * This is how `NEXT_PUBLIC_*` reaches a browser. Next.js replaces that exact
+ * text with the value during the build; it is a textual substitution, not a
+ * runtime lookup, because `process.env` does not exist in a browser.
+ *
+ * This file previously read them as `source.NEXT_PUBLIC_SUPABASE_URL`, with
+ * `source` a parameter defaulting to `process.env`. That is a dynamic property
+ * access on an object, so the bundler never saw the pattern and substituted
+ * nothing — the values were simply absent from the client bundle. Verified: a
+ * build with both variables set produced **zero** client chunks containing the
+ * URL. The browser client therefore threw "not configured" on every call,
+ * whatever was configured on the host.
+ *
+ * A consequence worth stating, because it looks like a bug when it is not: an
+ * inlined value is fixed when the build runs. Setting these variables after a
+ * build and restarting the host changes nothing — the new value is not in the
+ * bundle, and no restart puts it there. The build has to run with them present.
+ * `/diagnostics/config` shows the server's answer and the browser's answer
+ * side by side, and they disagree in exactly that case.
+ *
+ * Values are trimmed. A value pasted into a dashboard field often carries a
+ * trailing newline, and `z.url()` rejects "https://x.supabase.co\n" — which
+ * then reads as "not configured" and sends everyone looking for a missing
+ * variable that is in fact present and correct.
+ */
+const INLINED_PUBLIC_ENV: Record<string, string | undefined> = {
+  NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+};
+
+function clean(value: string | undefined): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+/**
  * Fails closed: without valid Supabase configuration the app refuses to operate rather
  * than falling back to an unauthenticated or misconfigured client.
+ *
+ * `source` defaults to the inlined values rather than `process.env`, so the
+ * browser and the server read the same thing. It stays a parameter only so
+ * tests can supply their own.
  */
 export function getSupabasePublicEnv(
-  source: Record<string, string | undefined> = process.env,
+  source: Record<string, string | undefined> = INLINED_PUBLIC_ENV,
 ): SupabasePublicEnv {
   const result = SupabasePublicEnvSchema.safeParse({
-    url: source.NEXT_PUBLIC_SUPABASE_URL,
-    publishableKey: source.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+    url: clean(source.NEXT_PUBLIC_SUPABASE_URL),
+    publishableKey: clean(source.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY),
   });
 
   if (!result.success) {
@@ -77,6 +131,50 @@ export function getSupabasePublicEnv(
 }
 
 /**
+ * A description of the configuration, with no part of any value in it.
+ *
+ * Four booleans, which is what distinguishes the four situations that all
+ * presented as the same "not configured" screen: absent, present but
+ * malformed, present but holding the wrong kind of key, and correct.
+ *
+ * The same function is called from the server and from the browser, and the
+ * interesting case is when the two answers DIFFER. On the server these reads
+ * resolve against the live process, so a host that has the variables reports
+ * them present. In the browser there is no process: the only values that exist
+ * are the ones the build substituted into the bundle. A deployment built
+ * before the variables were set therefore reports "configured" from the server
+ * and "not configured" from the browser — and the browser is the one that has
+ * to sign people in.
+ *
+ * That disagreement is the whole diagnosis, and it is why /diagnostics/config
+ * shows both.
+ */
+export type PublicConfigReport = {
+  urlConfigured: boolean;
+  urlValid: boolean;
+  publishableKeyConfigured: boolean;
+  keyFormatValid: boolean;
+};
+
+export function describeSupabasePublicEnv(
+  source: Record<string, string | undefined> = INLINED_PUBLIC_ENV,
+): PublicConfigReport {
+  const url = clean(source.NEXT_PUBLIC_SUPABASE_URL);
+  const key = clean(source.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
+
+  const single = SupabasePublicEnvSchema.shape;
+  const urlValid = url !== undefined && single.url.safeParse(url).success;
+  const keyFormatValid = key !== undefined && single.publishableKey.safeParse(key).success;
+
+  return {
+    urlConfigured: url !== undefined,
+    urlValid,
+    publishableKeyConfigured: key !== undefined,
+    keyFormatValid,
+  };
+}
+
+/**
  * Whether Supabase is configured, without throwing.
  *
  * A deployment missing these variables must degrade safely, not answer 500 on
@@ -86,7 +184,7 @@ export function getSupabasePublicEnv(
  * /admin answer 404 — the same answers an anonymous visitor gets.
  */
 export function isSupabaseConfigured(
-  source: Record<string, string | undefined> = process.env,
+  source: Record<string, string | undefined> = INLINED_PUBLIC_ENV,
 ): boolean {
   try {
     getSupabasePublicEnv(source);
