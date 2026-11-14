@@ -275,13 +275,65 @@ newer one. It now stops.
 
 ---
 
+## The template catalog, and the first table that is not tenant data
+
+Three migrations (`0010`–`0012`), a development seed, an install route and
+`/app/templates`. `docs/adr/0009-p2-template-catalog.md` records the reasoning.
+
+Every table before this one is owned by an organisation and scoped by
+`is_org_member`. A template is shared by every tenant, which inverts the risk:
+the danger is not one tenant reading another's row, it is one tenant **writing**
+a row that every other tenant then installs.
+
+**Write access is withheld, not denied by a policy.** `global_templates` and
+`global_template_versions` grant `select` and nothing else; there is no INSERT,
+UPDATE or DELETE policy because there is no privilege for one to apply to. A
+policy can be widened by a later `create policy` that reads innocuously in a
+diff; re-granting needs someone to write `grant insert … to authenticated`,
+which is a line a reviewer stops at. Six write attempts by an organisation owner
+— insert, update and delete on both tables — are tested and refused.
+
+**A draft template is invisible, not unlisted.** The versions table repeats the
+visibility check rather than trusting the template to be hidden, because
+otherwise a published version of a draft template would be readable through it —
+and the definition is the part worth hiding. `install_template()` re-checks both
+conditions too: it is `SECURITY DEFINER` and therefore not subject to the policy
+at all, and a definer function that trusts its argument to have been filtered by
+RLS is the standard way a hidden row becomes reachable.
+
+**Install copies, it does not reference.** Three rows in one transaction, and
+the copy is what makes the rest safe: the organisation edits its agent freely
+because it is ordinary tenant data, and the platform can retire or republish
+without touching what is already running in someone's workspace. Both directions
+are tested.
+
+**29 new checks; `PASS 122 FAIL 0 SKIP 0`.**
+
+### A seed that would have worked on the second run
+
+`supabase/seed/dev_templates.sql` first set every new template's
+`active_version_id` to null while reporting success. The sub-statements of a
+`WITH` clause share one snapshot and cannot see each other's effects on a target
+table, so the final `UPDATE` could not see the templates the same statement had
+just inserted. On any machine that had run the seed before, it would have
+worked.
+
+It is three statements now. The seed lives outside `supabase/migrations/` so
+nothing that applies migrations can apply it by accident, and it says plainly
+what it is: plausible first drafts, picker keys rather than real provider model
+ids, and no provider connected — installing one produces an agent that can be
+edited and published but not run.
+
+---
+
 ## Decisions on record
 
 `docs/adr/0001` single app · `0002` admin boundary in P1, dashboards in P6 ·
 `0003` MFA scope · `0004` local DB verification without Docker ·
 `0005` active-organisation cookie and its two-tab limit ·
 `0006` schema additions beyond `DATA_MODEL.md` · `0007` prepared OAuth path ·
-`0008` P2 agent and version schema.
+`0008` P2 agent and version schema ·
+`0009` P2 template catalog.
 
 ---
 
@@ -301,8 +353,12 @@ chain is proven end to end would build on an untested foundation.
 - **P2: template catalog** — `global_templates`, `global_template_versions`
   and `template_installations`, which deliver the other half of the P2 gate
   ("install copy; unauthorized template editing denied").
-- **P2: the onboarding wizard** — "create from template or blank", which the
-  template catalog unblocks.
+- **P2: the onboarding wizard** — "create from template or blank" as a first-run
+  flow, now that both halves exist.
+- **A production path for the catalog.** Templates are platform content and
+  there is no way to publish one except inserting rows by hand until P6's Super
+  Admin. In production the catalog is therefore empty, which is the right
+  default for content every tenant sees, but it is a gap worth naming.
 - The remaining `/app` section pages (agents, runs, workflows, …) still render
   P0 empty states inside a shell that is now real. The overview page has been
   corrected; the rest carry the same stale "not connected" wording.

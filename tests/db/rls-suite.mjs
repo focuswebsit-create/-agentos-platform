@@ -1176,6 +1176,358 @@ try {
         );
     }
   }
+
+  /* ---- 11. template catalog (P2) --------------------------------- */
+  g = "11-templates";
+  {
+    const ownerT = await makeUser(m, `tpl-owner-${tag}@example.test`);
+    const orgT = await makeOrg(m, `org-tpl-${tag}`, ownerT, 10);
+    const memberT = await makeUser(m, `tpl-member-${tag}@example.test`);
+    const viewerT = await makeUser(m, `tpl-viewer-${tag}@example.test`);
+    await addMember(m, orgT, memberT, "member");
+    await addMember(m, orgT, viewerT, "viewer");
+
+    const outsider = await makeUser(m, `tpl-out-${tag}@example.test`);
+    const orgOther = await makeOrg(m, `org-tpl-other-${tag}`, outsider, 10);
+
+    const DEFINITION = {
+      name: "תבנית תמיכה",
+      description: "מענה ראשוני ללקוחות בעברית, בלי להמציא מדיניות.",
+      role: "נציג תמיכה",
+      instructions: "ענה בעברית, בקצרה, והפנה לנציג אנושי כשחסר מידע.",
+      provider: "anthropic",
+      model: "anthropic:sonnet-family",
+      tools: [],
+      knowledgeBaseIds: [],
+      maxSteps: 6,
+      maxSpendUsdMicros: 500000,
+    };
+
+    /** Templates are platform data: only the privileged connection writes them. */
+    const makeTemplate = async (slug, visibility, { publish = true } = {}) => {
+      const t0 = (
+        await m.query(
+          `insert into public.global_templates (slug, category, name, description, visibility)
+           values ($1,'support',$1,'A template used by the verification suite.',$2) returning id`,
+          [slug, visibility],
+        )
+      ).rows[0].id;
+      const v0 = (
+        await m.query(
+          `insert into public.global_template_versions
+             (template_id, version, definition_json, published_at)
+           values ($1, 1, $2::jsonb, $3) returning id`,
+          [t0, JSON.stringify(DEFINITION), publish ? new Date() : null],
+        )
+      ).rows[0].id;
+      if (publish) {
+        await m.query(`update public.global_templates set active_version_id=$2 where id=$1`, [
+          t0,
+          v0,
+        ]);
+      }
+      return { templateId: t0, versionId: v0 };
+    };
+
+    const pub = await makeTemplate(`tpl-public-${tag}`, "public");
+    const draftTpl = await makeTemplate(`tpl-draft-${tag}`, "draft");
+    const retired = await makeTemplate(`tpl-retired-${tag}`, "retired");
+    const unpublished = await makeTemplate(`tpl-unpub-${tag}`, "public", { publish: false });
+
+    /* -- the P2 gate: unauthorized template editing denied -- */
+    for (const [label, sql, params] of [
+      [
+        "insert a template",
+        `insert into public.global_templates (slug, category, name, description, visibility)
+         values ('pirate-tpl','x','Pirate','Injected by a customer.','public')`,
+        [],
+      ],
+      [
+        "update a template",
+        `update public.global_templates set visibility='public' where id=$1`,
+        [draftTpl.templateId],
+      ],
+      ["delete a template", `delete from public.global_templates where id=$1`, [pub.templateId]],
+      [
+        "insert a template version",
+        `insert into public.global_template_versions (template_id, version, definition_json)
+         values ($1, 99, '{}'::jsonb)`,
+        [pub.templateId],
+      ],
+      [
+        "update a template version",
+        `update public.global_template_versions set definition_json='{"owned":true}'::jsonb where id=$1`,
+        [pub.versionId],
+      ],
+      [
+        "delete a template version",
+        `delete from public.global_template_versions where id=$1`,
+        [pub.versionId],
+      ],
+    ]) {
+      await expectDenied(
+        g,
+        `an org owner cannot ${label}`,
+        () => act(t, ownerT, () => t.query(sql, params)),
+        "permission denied",
+      );
+    }
+
+    /* -- what a customer may see -- */
+    await expectRows(
+      g,
+      "a public template is listed",
+      () =>
+        act(t, memberT, () =>
+          t.query(`select id from public.global_templates where id=$1`, [pub.templateId]),
+        ),
+      1,
+    );
+    await expectRows(
+      g,
+      "a draft template is invisible, not merely unlisted",
+      () =>
+        act(t, memberT, () =>
+          t.query(`select id from public.global_templates where id=$1`, [draftTpl.templateId]),
+        ),
+      0,
+    );
+    await expectRows(
+      g,
+      "a retired template is gone from the catalog",
+      () =>
+        act(t, memberT, () =>
+          t.query(`select id from public.global_templates where id=$1`, [retired.templateId]),
+        ),
+      0,
+    );
+    await expectRows(
+      g,
+      "a published version of a PUBLIC template is readable",
+      () =>
+        act(t, memberT, () =>
+          t.query(`select id from public.global_template_versions where id=$1`, [pub.versionId]),
+        ),
+      1,
+    );
+    await expectRows(
+      g,
+      "a published version of a DRAFT template is NOT readable (no side door)",
+      () =>
+        act(t, memberT, () =>
+          t.query(`select id from public.global_template_versions where id=$1`, [
+            draftTpl.versionId,
+          ]),
+        ),
+      0,
+    );
+    await expectRows(
+      g,
+      "an unpublished version of a public template is NOT readable",
+      () =>
+        act(t, memberT, () =>
+          t.query(`select id from public.global_template_versions where id=$1`, [
+            unpublished.versionId,
+          ]),
+        ),
+      0,
+    );
+
+    /* -- installing -- */
+    let installedAgent;
+    await expectAllowed(g, "a member can install a public template", () =>
+      act(t, memberT, async () => {
+        const r = await t.query(`select public.install_template($1,$2,null) as id`, [
+          orgT,
+          pub.versionId,
+        ]);
+        installedAgent = r.rows[0].id;
+      }),
+    );
+    await expectRows(
+      g,
+      "installing creates the agent, its draft and the installation record",
+      () =>
+        m.query(
+          `select 1 from public.agents a
+             join public.agent_versions v on v.agent_id = a.id and v.published_at is null
+             join public.template_installations i on i.linked_agent_id = a.id
+           where a.id = $1 and i.template_version_id = $2`,
+          [installedAgent, pub.versionId],
+        ),
+      1,
+    );
+    {
+      const r = await m.query(
+        `select v.config_json from public.agent_versions v
+         where v.agent_id=$1 and v.published_at is null`,
+        [installedAgent],
+      );
+      const cfg = r.rows[0].config_json;
+      if (cfg.model === DEFINITION.model && cfg.name === undefined)
+        ok(g, "the copied draft keeps the definition but drops its stale name");
+      else
+        bad(
+          g,
+          "the copied draft keeps the definition but drops its stale name",
+          `got ${JSON.stringify(cfg)}`,
+        );
+    }
+    await expectRows(
+      g,
+      "the installed agent is ordinary tenant data a member can edit",
+      () =>
+        act(t, memberT, () =>
+          t.query(
+            `update public.agent_versions set config_json='{"model":"changed"}'::jsonb
+             where agent_id=$1 and published_at is null`,
+            [installedAgent],
+          ),
+        ),
+      1,
+    );
+
+    /* -- install guards -- */
+    await expectDenied(
+      g,
+      "a viewer cannot install",
+      () =>
+        act(t, viewerT, () =>
+          t.query(`select public.install_template($1,$2,null)`, [orgT, pub.versionId]),
+        ),
+      "ORG_ACCESS_DENIED",
+    );
+    await expectDenied(
+      g,
+      "an outsider cannot install into someone else's org",
+      () =>
+        act(t, outsider, () =>
+          t.query(`select public.install_template($1,$2,null)`, [orgT, pub.versionId]),
+        ),
+      "ORG_ACCESS_DENIED",
+    );
+    await expectDenied(
+      g,
+      "a draft template cannot be installed even with its version id in hand",
+      () =>
+        act(t, memberT, () =>
+          t.query(`select public.install_template($1,$2,null)`, [orgT, draftTpl.versionId]),
+        ),
+      "TEMPLATE_NOT_AVAILABLE",
+    );
+    await expectDenied(
+      g,
+      "a retired template cannot be installed again",
+      () =>
+        act(t, memberT, () =>
+          t.query(`select public.install_template($1,$2,null)`, [orgT, retired.versionId]),
+        ),
+      "TEMPLATE_NOT_AVAILABLE",
+    );
+    await expectDenied(
+      g,
+      "an unpublished version cannot be installed",
+      () =>
+        act(t, memberT, () =>
+          t.query(`select public.install_template($1,$2,null)`, [orgT, unpublished.versionId]),
+        ),
+      "TEMPLATE_NOT_AVAILABLE",
+    );
+
+    /* -- installations are tenant data -- */
+    await expectRows(
+      g,
+      "org B sees 0 of org A's installations",
+      () =>
+        act(t, outsider, () =>
+          t.query(`select id from public.template_installations where org_id=$1`, [orgT]),
+        ),
+      0,
+    );
+    await expectRows(
+      g,
+      "a viewer in the installing org DOES see the installation",
+      () =>
+        act(t, viewerT, () =>
+          t.query(`select id from public.template_installations where org_id=$1`, [orgT]),
+        ),
+      1,
+    );
+    await expectDenied(
+      g,
+      "nobody can rewrite an installation record",
+      () =>
+        act(t, ownerT, () =>
+          t.query(`update public.template_installations set linked_agent_id=null where org_id=$1`, [
+            orgT,
+          ]),
+        ),
+      "permission denied",
+    );
+
+    /* -- the copy survives the catalog changing under it -- */
+    await m.query(`update public.global_templates set visibility='retired' where id=$1`, [
+      pub.templateId,
+    ]);
+    await expectRows(
+      g,
+      "retiring the template leaves the installed copy untouched",
+      () => m.query(`select 1 from public.agents where id=$1`, [installedAgent]),
+      1,
+    );
+    await m.query(`update public.global_templates set visibility='public' where id=$1`, [
+      pub.templateId,
+    ]);
+
+    /* -- platform-side invariants -- */
+    await expectDenied(
+      g,
+      "even the schema owner cannot edit a published template version",
+      () =>
+        m.query(
+          `update public.global_template_versions set definition_json='{"x":1}'::jsonb where id=$1`,
+          [pub.versionId],
+        ),
+      "TEMPLATE_VERSION_IMMUTABLE",
+    );
+    await expectDenied(
+      g,
+      "a template's active version cannot belong to another template",
+      () =>
+        m.query(`update public.global_templates set active_version_id=$2 where id=$1`, [
+          retired.templateId,
+          pub.versionId,
+        ]),
+      "global_templates_active_version_fk",
+    );
+    await expectDenied(
+      g,
+      "an installation cannot link to another org's agent",
+      () =>
+        m.query(
+          `insert into public.template_installations (org_id, template_version_id, linked_agent_id)
+           values ($1,$2,$3)`,
+          [orgOther, pub.versionId, installedAgent],
+        ),
+      "template_installations_agent_fk",
+    );
+    await expectAllowed(
+      g,
+      "service_role may write the catalog (that is how the platform publishes)",
+      async () => {
+        await p.query("SET ROLE service_role");
+        try {
+          await p.query(
+            `insert into public.global_templates (slug, category, name, description)
+             values ($1,'support','Probe','Written by the service role on purpose.')`,
+            [`tpl-probe-${tag}`],
+          );
+        } finally {
+          await p.query("RESET ROLE").catch(() => {});
+        }
+      },
+    );
+  }
 } finally {
   await m.end().catch(() => {});
   await t.end().catch(() => {});

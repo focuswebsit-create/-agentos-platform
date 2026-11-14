@@ -578,6 +578,20 @@ export const en: Dictionary = {
       notFound: "Agent not found.",
     },
   },
+  templates: {
+    title: "Template library",
+    subtitle: "Ready-made starting points. Installing creates your own private copy to edit.",
+    empty: "No templates are available right now.",
+    install: "Install",
+    installing: "Installing…",
+    installed: "Installed. Opening the agent…",
+    requiredTools: "Required tools",
+    noTools: "No external tools",
+    noInstallPermission: "Viewers cannot install templates.",
+    copyNotice:
+      "Installing creates a copy in your organisation. Your changes do not affect the template, and updates to the template do not affect you.",
+    unavailable: "This template is not available to install.",
+  },
   orgSettings: {
     title: "Organisation settings",
     subtitle: "Organisation details, language and time zone.",

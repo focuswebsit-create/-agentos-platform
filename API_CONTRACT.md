@@ -74,12 +74,15 @@ failures indistinguishable to a client (ADR-0006):
 
 Added in P2, for agents (ADR-0008):
 
-`AGENT_ARCHIVED`, `AGENT_CONFIG_INVALID`, `AGENT_VERSION_IMMUTABLE`.
+`AGENT_ARCHIVED`, `AGENT_CONFIG_INVALID`, `AGENT_VERSION_IMMUTABLE`, `TEMPLATE_NOT_AVAILABLE`.
 
 There is deliberately no `AGENT_NOT_FOUND`. An unknown agent id and an agent
 belonging to another organisation both answer `ORG_ACCESS_DENIED`, so the
 endpoint cannot be used to confirm that a given agent exists. `AGENT_VERSION_MISSING`
 (already in the taxonomy) covers an agent whose draft is absent.
+`TEMPLATE_NOT_AVAILABLE` likewise collapses "no such template", "not published"
+and "draft or retired" into one answer, so the install endpoint cannot be used
+to discover templates the platform has not released.
 
 `INVITATION_INVALID` is deliberately **one** code for every invitation failure —
 unknown token, expired, revoked, already used, or addressed to someone else.

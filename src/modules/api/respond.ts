@@ -85,6 +85,9 @@ export function mapDatabaseError(message: string | undefined): {
   if (m.includes("AGENT_CONFIG_INVALID")) {
     return { code: "AGENT_CONFIG_INVALID", message: "הגדרות הסוכן חסרות או אינן תקינות." };
   }
+  if (m.includes("TEMPLATE_NOT_AVAILABLE") || m.includes("TEMPLATE_VERSION_IMMUTABLE")) {
+    return { code: "TEMPLATE_NOT_AVAILABLE", message: "התבנית אינה זמינה להתקנה." };
+  }
   if (m.includes("AGENT_VERSION_MISSING")) {
     return { code: "AGENT_VERSION_MISSING", message: "לא נמצאה טיוטה לפרסום." };
   }

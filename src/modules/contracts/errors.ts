@@ -66,6 +66,12 @@ export const ERROR_CODES = [
    * versions are the record of what ran; a new version is published instead.
    */
   "AGENT_VERSION_IMMUTABLE",
+  /**
+   * The template does not exist, is not published, or its template is draft or
+   * retired. One code for all four, so the install endpoint cannot be used to
+   * discover templates the platform has not released.
+   */
+  "TEMPLATE_NOT_AVAILABLE",
 ] as const;
 
 export const ErrorCodeSchema = z.enum(ERROR_CODES);

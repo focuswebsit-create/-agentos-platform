@@ -142,7 +142,12 @@ describe("Error taxonomy", () => {
   });
 
   it("contains the P2 agent codes, and deliberately no AGENT_NOT_FOUND", () => {
-    for (const code of ["AGENT_ARCHIVED", "AGENT_CONFIG_INVALID", "AGENT_VERSION_IMMUTABLE"]) {
+    for (const code of [
+      "AGENT_ARCHIVED",
+      "AGENT_CONFIG_INVALID",
+      "AGENT_VERSION_IMMUTABLE",
+      "TEMPLATE_NOT_AVAILABLE",
+    ]) {
       expect(ERROR_CODES).toContain(code);
     }
     // An unknown agent id and an agent in another organisation both answer
@@ -153,7 +158,7 @@ describe("Error taxonomy", () => {
 
   it("has no duplicates and a known size, so a code is never added by accident", () => {
     expect(new Set(ERROR_CODES).size).toBe(ERROR_CODES.length);
-    expect(ERROR_CODES).toHaveLength(24);
+    expect(ERROR_CODES).toHaveLength(25);
   });
 
   it("validates the error envelope", () => {

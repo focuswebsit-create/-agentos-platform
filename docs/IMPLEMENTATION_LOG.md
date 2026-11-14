@@ -422,3 +422,86 @@ session, because no migration has been applied to any Supabase project.
 P2 template catalog: `global_templates`, `global_template_versions`,
 `template_installations`, which deliver the rest of the P2 gate
 ("install copy; unauthorized template editing denied").
+
+---
+
+## 2026-11-14 — P2 step 3: template catalog
+
+Scope stated before coding: the catalog tables, the install flow and the
+catalog screen. Not in scope: the onboarding wizard, a Super Admin publishing
+UI, tool-registry enforcement.
+
+### Changed
+
+| File | Change |
+|---|---|
+| `supabase/migrations/0010_templates.sql` | new — `template_visibility`, `global_templates`, `global_template_versions`, `template_installations` |
+| `supabase/migrations/0011_templates_rls.sql` | new — select-only for customers, write for `service_role` |
+| `supabase/migrations/0012_templates_rpc.sql` | new — version immutability trigger, `install_template()` |
+| `supabase/seed/dev_templates.sql` | new — the four `PRD.md` templates, **development only**, outside `migrations/` |
+| `src/modules/templates/data.ts` | new — `listTemplates` |
+| `src/app/api/templates/[versionId]/install/route.ts` | new |
+| `src/components/agents/{template-catalog,install-template-button}.tsx` | new |
+| `src/app/app/templates/page.tsx` | real screen |
+| `src/modules/contracts/errors.ts`, `src/modules/api/respond.ts`, `API_CONTRACT.md` | `TEMPLATE_NOT_AVAILABLE` |
+| `src/components/app-shell/nav-config.ts` | `templates` → `phase: null` |
+| `tests/db/rls-suite.mjs` | group 11: 29 checks |
+| `tests/e2e/smoke.spec.ts` | `/app/templates` redirects; the install route refuses an anonymous call |
+| `docs/adr/0009-p2-template-catalog.md` | new |
+
+**Not applied to Supabase.** Verified only on the local cluster.
+
+### Commands and exact results
+
+| Command | Result |
+|---|---|
+| `npm run lint` | exit 0 |
+| `npm run typecheck` | exit 0 |
+| `npm run format:check` | exit 0 |
+| `npm test` | exit 0 — `Tests 141 passed (141)` |
+| `npm run build` | exit 0 |
+| `npm run test:e2e` | exit 0 — `21 passed` |
+| `npm run test:rls` | exit 0 — `PASS 122 FAIL 0 SKIP 0` |
+| seed, clean schema then re-run | first run creates 4 templates each with an active v1; second run is a no-op |
+| secret scan (local) | `findings=0 errors=0 credential_files=0` |
+| gitleaks | not run locally (not installed); CI runs it over full history |
+
+### The P2 gate, item by item
+
+`ROADMAP.md` P2: "create, edit, version and install; unauthorized template
+editing denied."
+
+| Gate item | Where it is proven |
+|---|---|
+| create | `create_agent()`; RLS suite group 10, plus `POST /api/agents` |
+| edit | draft config update; group 10 covers member/viewer/outsider |
+| version | `publish_agent_version()` under a row lock; group 10 including two concurrent publishes |
+| install | `install_template()`; group 11, agent + draft + record in one transaction |
+| unauthorized template editing denied | group 11: six write attempts by an org owner, all `permission denied` |
+
+All four are proven **at the database layer**. The UI path for each exists and
+builds, but has not run against a real session — no migration has been applied
+to any Supabase project.
+
+### One defect, and why it matters more than it looks
+
+The seed reported success while leaving every new template's `active_version_id`
+null. The sub-statements of a `WITH` clause share one snapshot and cannot see
+each other's effects on a target table, so the final `UPDATE` could not see the
+templates the same statement had just inserted.
+
+It would have worked on the second run, when the rows already existed. A bug
+that only appears on a fresh database is one that reaches whoever sets up next,
+not whoever wrote it. Rewritten as three statements, then verified by rebuilding
+the schema from scratch and running the seed twice.
+
+### Not verified
+
+Unchanged, plus: no template screen has run against Supabase, and there is no
+way to publish a production template except inserting rows by hand until P6's
+Super Admin. In production the catalog is empty.
+
+### Next
+
+The onboarding wizard ("create from template or blank"), now that both halves
+of P2 exist.
