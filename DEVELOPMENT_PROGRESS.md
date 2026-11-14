@@ -777,6 +777,28 @@ unverified-email and early-sign-up cases. **`PASS 192 FAIL 0`.**
 
 ---
 
+## Every save in Agent Studio was refused as a forgery
+
+`verifyCsrf` refused any method that was not POST. Seven endpoints use PATCH,
+PUT or DELETE — saving an agent, saving its draft, organisation settings,
+changing a role, removing a member, and two Super Admin actions — so every
+legitimate request to them answered "הבקשה נדחתה מטעמי אבטחה". Publishing failed
+with them, because the editor saves first.
+
+No test had ever sent a *valid* non-POST mutation. The checks that existed sent
+POST and GET, and the e2e sent unauthenticated requests expecting refusal — all
+of which a check that refuses everything passes. The fix is a closed allowlist
+(POST, PUT, PATCH, DELETE; safe methods still refused), and the regression test
+that matters is systemic: it scans every CSRF-checked route and fails by name
+if one exports a method the check refuses.
+
+Five duplicated `selfOrigin()` helpers became one `allowedOrigins()`, which
+accepts the origin the request was sent to as well as `NEXT_PUBLIC_SITE_URL` —
+the old helpers used the configured URL *instead*, which breaks same-origin
+requests on any Vercel preview URL other than the configured one.
+
+---
+
 ## Decisions on record
 
 `docs/adr/0001` single app · `0002` admin boundary in P1, dashboards in P6 ·

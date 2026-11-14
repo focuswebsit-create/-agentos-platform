@@ -1,7 +1,7 @@
 import "server-only";
 import type { NextResponse } from "next/server";
 import { CSRF_COOKIE, CSRF_HEADER } from "@/modules/tenancy/cookie";
-import { verifyCsrf } from "@/modules/tenancy/csrf";
+import { allowedOrigins, verifyCsrf } from "@/modules/tenancy/csrf";
 import { newRequestId, problem } from "@/modules/api/respond";
 import { requirePlatformAdmin, type PlatformAdmin } from "./guard";
 
@@ -27,18 +27,6 @@ import { requirePlatformAdmin, type PlatformAdmin } from "./guard";
 export type AdminGuardOk = { ok: true; admin: PlatformAdmin; requestId: string };
 export type AdminApiGuardResult = AdminGuardOk | { ok: false; response: NextResponse | Response };
 
-function selfOrigin(request: Request): string {
-  const configured = process.env.NEXT_PUBLIC_SITE_URL;
-  if (configured) {
-    try {
-      return new URL(configured).origin;
-    } catch {
-      // fall through to the request's own origin
-    }
-  }
-  return new URL(request.url).origin;
-}
-
 const NOT_FOUND = () => new Response(null, { status: 404 });
 
 export async function guardAdminApi(request: Request): Promise<AdminApiGuardResult> {
@@ -58,7 +46,7 @@ export async function guardAdminApi(request: Request): Promise<AdminApiGuardResu
     method: request.method,
     origin: request.headers.get("origin"),
     secFetchSite: request.headers.get("sec-fetch-site"),
-    selfOrigin: selfOrigin(request),
+    selfOrigin: allowedOrigins(request),
     cookieToken: cookieToken ? decodeURIComponent(cookieToken) : undefined,
     headerToken: request.headers.get(CSRF_HEADER),
   });

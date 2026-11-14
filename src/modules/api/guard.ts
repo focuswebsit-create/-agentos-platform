@@ -1,7 +1,7 @@
 import type { NextResponse } from "next/server";
 import { can, type OrgAction } from "@/modules/tenancy/permissions";
 import { CSRF_COOKIE, CSRF_HEADER } from "@/modules/tenancy/cookie";
-import { verifyCsrf } from "@/modules/tenancy/csrf";
+import { allowedOrigins, verifyCsrf } from "@/modules/tenancy/csrf";
 import { resolveOrgContext, type OrgContext } from "@/modules/tenancy/context";
 import { isFreshOrgContext } from "@/modules/tenancy/context-shared";
 import { newRequestId, problem } from "./respond";
@@ -36,18 +36,6 @@ export type GuardOptions = {
 export type GuardResult =
   { ok: true; context: OrgContext; requestId: string } | { ok: false; response: NextResponse };
 
-function selfOrigin(request: Request): string {
-  const configured = process.env.NEXT_PUBLIC_SITE_URL;
-  if (configured) {
-    try {
-      return new URL(configured).origin;
-    } catch {
-      // fall through to the request's own origin
-    }
-  }
-  return new URL(request.url).origin;
-}
-
 export async function guardApi(request: Request, options: GuardOptions = {}): Promise<GuardResult> {
   const requestId = newRequestId();
 
@@ -76,7 +64,7 @@ export async function guardApi(request: Request, options: GuardOptions = {}): Pr
       method: request.method,
       origin: request.headers.get("origin"),
       secFetchSite: request.headers.get("sec-fetch-site"),
-      selfOrigin: selfOrigin(request),
+      selfOrigin: allowedOrigins(request),
       cookieToken: cookieToken ? decodeURIComponent(cookieToken) : undefined,
       headerToken: request.headers.get(CSRF_HEADER),
     });

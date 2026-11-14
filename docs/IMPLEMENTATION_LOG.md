@@ -1360,3 +1360,87 @@ part was a code defect and is fixed.
 Anything against Supabase itself. The Supabase CLI path in the doc is marked as
 unverified: the CLI is not installed here and the management API is
 unreachable.
+
+---
+
+## 2026-11-14 — "הבקשה נדחתה מטעמי אבטחה" on every save in Agent Studio
+
+### Root cause
+
+`verifyCsrf` opened with:
+
+```ts
+if (input.method.toUpperCase() !== "POST") return { ok: false, reason: "method_not_allowed" };
+```
+
+The rule came from P1's workspace switch, where the point was that a GET must
+never change anything. It was written into the shared check as "anything that
+is not POST is refused", and every endpoint added afterwards with PATCH, PUT or
+DELETE was rejected on every legitimate request:
+
+| Endpoint | Method | User-visible effect |
+|---|---|---|
+| `/api/agents/[id]` | PATCH | saving an agent's name or description |
+| `/api/agents/[id]/draft` | PUT | **saving the draft — the reported failure** |
+| `/api/orgs` | PATCH | the organisation settings form |
+| `/api/memberships/[userId]` | PATCH | changing a member's role |
+| `/api/memberships/[userId]` | DELETE | removing a member |
+| `/api/admin/templates/[id]` | PATCH | template visibility and rollback |
+| `/api/admin/organizations/[id]` | PATCH | suspending or restoring an organisation |
+
+Publishing failed with them: the editor saves before it publishes and stops
+when the save fails.
+
+Nothing caught it because no test had ever sent a **valid** non-POST mutation
+through the check. The unit tests sent POST (passed) and GET (refused); the e2e
+tests send requests with no token and expect a refusal — which a check that
+refuses everything satisfies perfectly.
+
+### Fix
+
+A closed allowlist — POST, PUT, PATCH, DELETE. GET, HEAD, OPTIONS and anything
+unrecognised are still refused, so the original intent (a navigation or
+prefetch can never mutate) is intact. PATCH, PUT and DELETE cannot be sent by a
+cross-site HTML form at all, and a cross-site `fetch()` with them needs a CORS
+preflight this app never answers — they are harder to forge than the POST that
+was always allowed. The origin check and the double-submit token apply to all
+four unchanged.
+
+### Also fixed: five copies of `selfOrigin()`
+
+They disagreed with each other, and most returned `NEXT_PUBLIC_SITE_URL`
+*instead of* the request's own origin. On a Vercel preview — every deployment
+has its own URL plus a branch alias, and the site URL usually names production
+— a browser that sends no `Sec-Fetch-Site` had a same-origin request compared
+against production and refused. One `allowedOrigins(request)` now returns the
+request's own origin plus the configured one. Accepting the origin a request
+was sent to is the definition of same-origin; an attacker's page still sends
+its own `Origin` and is refused.
+
+### Tests
+
+`tests/unit/csrf-methods.test.ts`, 50 checks:
+
+- every mutation method with a valid token is accepted, and each is still
+  refused with a bad token, no token, or from another site;
+- every safe method is refused even with a valid token;
+- **a systemic check that scans `src/app/api` for every route that runs a CSRF
+  check and asserts each method it exports is one the check accepts** — the
+  test that would have caught this the day the first PATCH route was written;
+- origin handling across preview URLs, including an attacker's origin.
+
+Mutation-checked: restoring the POST-only rule fails 20 of them, including all
+seven route checks by name.
+
+### Commands and exact results
+
+| Command | Result |
+|---|---|
+| `npm run lint` | exit 0 |
+| `npm run typecheck` | exit 0 |
+| `npm run format:check` | exit 0 |
+| `npm test` | exit 0 — `Tests 266 passed (266)` |
+| `npm run build` | exit 0 |
+| `npm run test:e2e` | exit 0 — `34 passed` |
+| `npm run test:rls` | exit 0 — `PASS 192 FAIL 0 SKIP 0` |
+| secret scan | `findings=0` |

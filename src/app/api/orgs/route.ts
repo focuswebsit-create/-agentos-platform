@@ -6,7 +6,7 @@ import { z } from "zod";
 import { guardApi } from "@/modules/api/guard";
 import { ACTIVE_ORG_COOKIE, activeOrgCookieAttributes } from "@/modules/tenancy";
 import { CSRF_COOKIE, CSRF_HEADER } from "@/modules/tenancy/cookie";
-import { verifyCsrf } from "@/modules/tenancy/csrf";
+import { allowedOrigins, verifyCsrf } from "@/modules/tenancy/csrf";
 import { mapDatabaseError, newRequestId, okJson, problem } from "@/modules/api/respond";
 
 /**
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     method: request.method,
     origin: request.headers.get("origin"),
     secFetchSite: request.headers.get("sec-fetch-site"),
-    selfOrigin: process.env.NEXT_PUBLIC_SITE_URL ?? request.nextUrl.origin,
+    selfOrigin: allowedOrigins(request),
     cookieToken: request.cookies.get(CSRF_COOKIE)?.value,
     headerToken: request.headers.get(CSRF_HEADER),
   });
