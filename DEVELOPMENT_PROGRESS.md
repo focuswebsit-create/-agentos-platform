@@ -533,6 +533,51 @@ this module rendering means a cross-tenant read.
 
 ---
 
+## A production catalog can now exist
+
+`/admin/templates` creates templates, publishes versions, changes visibility
+and rolls back. Until now `supabase/seed/dev_templates.sql` filled a
+development database and production started with nothing to install — an
+acceptable default for content every tenant sees, but a dead end without this
+screen.
+
+**New templates are created `draft`, and that is not configurable.** Staged
+publishing means a template exists before anyone can install it; a create call
+that could go straight to public would make every typo a release to every
+tenant.
+
+**Rollback moves the pointer and deletes nothing.** The newer version stays in
+the history, which is what makes a rollback reversible. The immutability
+trigger from 0012 would refuse to rewrite it in any case.
+
+`SUPER_ADMIN.md` requires that publishing "never silently override customers'
+pinned versions". That is structural rather than a rule to remember: installing
+copies, so an organisation's agent has no link back to the template version it
+came from and nothing on this screen can reach it. The RLS suite already tests
+that retiring a template leaves an installed copy untouched.
+
+### `/api/admin/*` has its own guard
+
+`guardApi()` resolves an organisation and a role within it. A platform
+administrator has neither, and bending the customer guard to accept "no
+organisation" would weaken the check every customer route depends on. The new
+`guardAdminApi()` requires a platform-admin row and applies the same CSRF
+treatment — an administrator's browser is as forgeable as anyone else's, and a
+cross-site POST that published a template to every tenant is worse than the
+customer-side equivalent.
+
+Every failure answers **404**, as the pages do. An API route answering 401
+would confirm the admin surface exists to someone who cannot reach the pages.
+
+The definition is edited as JSON rather than through a built form. The agent
+configuration schema changes with every phase, and a bespoke form would need
+updating in lockstep or quietly stop being able to express it; the server
+validates against `AgentConfigSchema` and names the missing fields. This is an
+internal tool for a handful of operators, and spending the design budget here
+instead of on customer screens would be the wrong trade.
+
+---
+
 ## Decisions on record
 
 `docs/adr/0001` single app · `0002` admin boundary in P1, dashboards in P6 ·

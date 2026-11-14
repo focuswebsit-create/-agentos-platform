@@ -956,3 +956,77 @@ are proven to refuse anonymous callers by the e2e sweep.
 2. Suspension with reason and audit (`SUPER_ADMIN.md` "Actions and safeguards").
 3. **Blocked on the owner:** a real provider key, a merchant account, and the
    seven Supabase setup items.
+
+---
+
+## 2026-11-14 — P6 step 2: publishing the template catalog
+
+Closes the gap named two entries ago: there was no way to publish a production
+template, so a real deployment's catalog was permanently empty.
+
+### Changed
+
+| File | Change |
+|---|---|
+| `src/modules/platform-admin/api-guard.ts` | new — `guardAdminApi()`: platform-admin row + CSRF, 404 on refusal |
+| `src/modules/platform-admin/templates.ts` | new — list, create, publish a version, set visibility, roll back |
+| `src/app/api/admin/templates/**` | new — three routes |
+| `src/app/admin/templates/page.tsx`, `src/components/admin-shell/template-manager.tsx` | new |
+| `src/components/admin-shell/admin-nav-config.ts`, `src/i18n/{he,en}.ts` | the `templates` section |
+| `tests/e2e/smoke.spec.ts` | the three write endpoints answer 404 to an anonymous caller; `/admin/templates` joins the page sweep |
+
+### Commands and exact results
+
+| Command | Result |
+|---|---|
+| `npm run lint` | exit 0 |
+| `npm run typecheck` | exit 0 |
+| `npm run format:check` | exit 0 |
+| `npm test` | exit 0 — `Tests 183 passed (183)` |
+| `npm run build` | exit 0 |
+| `npm run test:e2e` | exit 0 — `25 passed` |
+| `npm run test:rls` | exit 0 — `PASS 159 FAIL 0 SKIP 0` |
+| secret scan (local) | `findings=0 errors=0 credential_files=0` |
+
+### Deliberate choices
+
+- **Create is always `draft`.** Not a parameter. Staged publishing is the
+  requirement, and a create that could go straight to public would make a typo
+  a release to every tenant.
+- **Publishing a version publishes it immediately** and points the template at
+  it. An unpublished global version has no reader — the policy hides it,
+  `install_template()` refuses it, there is no preview surface — so it would be
+  a dead row rather than a stage.
+- **`public` requires an active version.** A public template with nothing to
+  install is a catalog entry whose only behaviour is to fail.
+- **Rollback moves the pointer only.** The newer version stays, which is what
+  makes the rollback reversible; the 0012 trigger would refuse to rewrite it
+  anyway.
+- **`guardAdminApi` is separate from `guardApi`.** The customer guard resolves
+  an organisation and a role; an administrator has neither, and widening it to
+  accept "no organisation" would weaken every customer route.
+- **JSON textarea, not a built form.** The configuration schema changes each
+  phase and a bespoke form would fall behind it. The server validates and names
+  the missing fields.
+
+### `ACTIVATION_FAILED` is its own error
+
+If the version is written but the pointer update fails, the response says so
+instead of reporting a generic failure. An administrator told only "it failed"
+would retry and create a duplicate version; one told the version exists can
+roll back to it.
+
+### Not verified
+
+No admin screen has run against Supabase, and no `platform_admins` row exists
+in any real project (`docs/SUPABASE_SETUP.md` blocker 5). The catalog writes
+are exercised by the RLS suite only at the privilege level — that `service_role`
+may write and customers may not. The publish flow itself has been typechecked
+and built, not run.
+
+### Next
+
+1. Suspension with reason and audit (`SUPER_ADMIN.md` "Actions and safeguards").
+2. Multi-step execution.
+3. **Blocked on the owner:** a real provider key, a merchant account, and the
+   seven Supabase setup items.

@@ -79,6 +79,7 @@ test("Super Admin answers 404, never 403, to anyone who is not a platform admin"
     "/admin/organizations",
     "/admin/usage",
     "/admin/audit",
+    "/admin/templates",
     "/admin/settings",
   ]) {
     const res = await page.goto(route);
@@ -133,6 +134,26 @@ test("state-changing API routes refuse an unauthenticated, CSRF-less call", asyn
   // Switching workspace must not be reachable by navigation.
   const getSwitch = await request.get("/api/orgs/switch");
   expect(getSwitch.status()).toBe(405);
+});
+
+test("admin write endpoints answer 404 to anyone who is not a platform admin", async ({
+  request,
+}) => {
+  // 404 and not 403, matching the pages. An API route that answered 401 would
+  // confirm the admin surface exists to someone who cannot reach the pages,
+  // which is the whole point of the convention.
+  const id = "00000000-0000-4000-8000-000000000000";
+  for (const res of await Promise.all([
+    request.post("/api/admin/templates", {
+      data: { slug: "x-template", category: "support", name: "X", description: "A description." },
+    }),
+    request.patch(`/api/admin/templates/${id}`, {
+      data: { op: "visibility", visibility: "public" },
+    }),
+    request.post(`/api/admin/templates/${id}/versions`, { data: { definition: {} } }),
+  ])) {
+    expect(res.status()).toBe(404);
+  }
 });
 
 test("the internal sweeper is invisible without its secret", async ({ request }) => {

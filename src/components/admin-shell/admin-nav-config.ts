@@ -5,6 +5,7 @@ import {
   CreditCardIcon,
   GaugeIcon,
   LayoutDashboardIcon,
+  LayoutTemplateIcon,
   ScrollTextIcon,
   SettingsIcon,
   type LucideIcon,
@@ -16,6 +17,7 @@ export type AdminNavKey =
   | "subscriptions"
   | "usage"
   | "costs"
+  | "templates"
   | "audit"
   | "alerts"
   | "settings";
@@ -35,6 +37,7 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
   { key: "subscriptions", href: "/admin/subscriptions", icon: CreditCardIcon },
   { key: "usage", href: "/admin/usage", icon: GaugeIcon },
   { key: "costs", href: "/admin/costs", icon: CoinsIcon },
+  { key: "templates", href: "/admin/templates", icon: LayoutTemplateIcon },
   { key: "audit", href: "/admin/audit", icon: ScrollTextIcon },
   { key: "alerts", href: "/admin/alerts", icon: BellRingIcon },
   { key: "settings", href: "/admin/settings", icon: SettingsIcon },
