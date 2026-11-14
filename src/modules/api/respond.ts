@@ -21,6 +21,9 @@ const STATUS_BY_CODE: Partial<Record<ErrorCode, number>> = {
   INVITATION_INVALID: 400,
   VALIDATION_FAILED: 400,
   RATE_LIMITED: 429,
+  RUN_CONCURRENCY_LIMIT: 429,
+  USAGE_LIMIT_REACHED: 402,
+  SUBSCRIPTION_INACTIVE: 402,
   PROVIDER_NOT_CONFIGURED: 503,
   RUNTIME_NOT_CONFIGURED: 503,
   DATABASE_NOT_PROVISIONED: 503,
@@ -96,6 +99,18 @@ export function mapDatabaseError(error: string | { message?: string; code?: stri
     return {
       code: "ORG_SUSPENDED",
       message: "סביבת העבודה מושעית ואי אפשר להתחיל הרצות חדשות.",
+    };
+  }
+  if (m.includes("SUBSCRIPTION_INACTIVE")) {
+    return {
+      code: "SUBSCRIPTION_INACTIVE",
+      message: "אין מנוי פעיל לארגון, ולכן לא ניתן להתחיל הרצות חדשות. הנתונים נשמרים.",
+    };
+  }
+  if (m.includes("RUN_CONCURRENCY_LIMIT")) {
+    return {
+      code: "RUN_CONCURRENCY_LIMIT",
+      message: "הגעתם למספר ההרצות המקבילות שהתוכנית מאפשרת. המתינו לסיום הרצה ונסו שוב.",
     };
   }
   if (m.includes("USAGE_LIMIT_REACHED")) {

@@ -3,6 +3,15 @@
 Exact results per pushed milestone, newest first. "Local DB" means PostgreSQL 16
 with the Supabase compatibility shim in this container — not Supabase.
 
+## P5 slice: entitlements and billing screen (2026-11-14)
+
+lint 0 · typecheck 0 · format 0 · unit 26 files / 349 passed · build 0 · e2e 34 passed ·
+**RLS 222 PASS** (24 new in group 16: public catalog, immutable prices, nothing purchasable,
+pilot orgs keep current limits, member/outsider/anon access, owner cannot self-subscribe,
+one effective subscription per org, concurrency and monthly budget enforced in start_run,
+overrides with expiry, lapsed stops runs but keeps reads, webhook replay refused,
+provider events hidden from customers) · secret scan findings=0.
+
 ## Agent Studio: restore, duplicate, goals (2026-11-14)
 
 lint 0 · typecheck 0 · format 0 · unit 25 files / 341 passed · build 0 · e2e 34 passed ·

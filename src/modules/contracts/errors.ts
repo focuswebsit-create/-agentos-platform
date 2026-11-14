@@ -105,6 +105,13 @@ export const ERROR_CODES = [
    * the same reason as PROVIDER_NOT_CONFIGURED. An operator problem.
    */
   "RUNTIME_NOT_CONFIGURED",
+
+  /**
+   * P5. The organisation had a subscription and none is in effect now
+   * (cancelled, expired, suspended for non-payment). New runs stop; the
+   * workspace stays readable, per BILLING_AND_PLANS.md.
+   */
+  "SUBSCRIPTION_INACTIVE",
 ] as const;
 
 export const ErrorCodeSchema = z.enum(ERROR_CODES);

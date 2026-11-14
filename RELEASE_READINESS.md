@@ -18,6 +18,7 @@ Last updated: 2026-11-14 · last pushed commit: `0dbc0da`
 | Run lifecycle: dispatch → claim → trace → usage → settle; one winner under concurrent claims; double settlement safe (with 0019) | RLS suite group 12, unit `executor`, `run-execute`, `run-recovery` |
 | Spend cap and budget reservation, incl. concurrent dispatch | RLS suite group 12 |
 | Suspension blocks runs, keeps read access | RLS suite group 13 |
+| Plan entitlements: monthly AI budget, concurrent runs, lapsed subscription; webhook event dedupe | RLS suite group 16 (migration 0020, not yet applied) |
 
 **Scope of "verified":** against PostgreSQL 16 with a compatibility shim, not
 against Supabase itself; unit tests use fakes for the database and the SDK.
@@ -55,6 +56,7 @@ against Supabase itself; unit tests use fakes for the database and the SDK.
 | S2 | Anon held EXECUTE on 12 functions via Supabase default privileges | Fixed by 0017 (applied on Development) |
 | S3 | A key in the environment alone enabled billed calls | Fixed `0dbc0da` — `AGENTOS_ENABLE_LIVE_AI` required |
 | S4 | `settle_run` could double-count a run's cost | Fixed by 0019 — **not yet applied** |
+| S6 | Plan quotas were not enforced server-side | 0020 enforces them in `start_run` — **not yet applied** |
 | S5 | gitleaks not runnable locally | Mitigated: runs in CI on every push |
 
 ## 6. Business / legal blockers
@@ -75,7 +77,7 @@ against Supabase itself; unit tests use fakes for the database and the SDK.
    "[סימולציה — לא תשובת מודל]", the trace has one `model_call` step, usage shows tokens.
    If it fails, the run page shows the code and — for owners — the runtime
    status panel, including whether the database accepts the server key.
-3. Apply migration 0019 (`docs/APPLY_MIGRATIONS.md`, incremental section).
+3. Apply migrations 0019 then 0020 (`docs/APPLY_MIGRATIONS.md`, incremental section).
 4. Confirm Production Branch = `main` in both Vercel projects.
 
 ## 8. Proposed real Anthropic smoke test (awaiting approval)

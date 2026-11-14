@@ -825,6 +825,41 @@ export const en: Dictionary = {
       noPermission: "Viewers cannot run agents.",
     },
   },
+  billing: {
+    title: "Usage and billing",
+    subtitle: "Your organisation's plan, what it allows, and how much was used this month.",
+    currentHeading: "Current plan",
+    sources: {
+      pilot: "Pilot — no subscription",
+      subscription: "Active subscription",
+      lapsed: "Subscription not in effect",
+    },
+    pilotBody:
+      "This organisation is on pilot terms: the limits below are the ones set for it. Nothing is charged.",
+    lapsedBody:
+      "No subscription is in effect. New runs are blocked; all data is kept and readable.",
+    periodEnds: "The current period ends on {date}",
+    cancelsAtEnd: "The subscription will cancel at the end of the period.",
+    limitsHeading: "What the plan allows",
+    seats: "Users",
+    concurrency: "Concurrent runs",
+    knowledgeBases: "Knowledge bases",
+    budget: "Monthly AI budget",
+    noFixedLimit: "No fixed limit",
+    usageHeading: "This month's usage",
+    usageSpent: "Spent",
+    usageReserved: "Reserved for active runs",
+    usageRemaining: "Remaining",
+    usageHidden: "Usage figures are visible to owners and admins only.",
+    plansHeading: "Plans",
+    purchaseUnavailable: "Purchase opens once an approved payment provider is connected",
+    currentBadge: "Your plan",
+    purchaseNote:
+      "Payments are not connected yet, so a subscription cannot be bought or changed here. A subscription is activated only by a payment confirmation sent directly by the payment provider — never by returning from a checkout page.",
+    notProvisioned:
+      "The plan and subscription tables are not installed on this environment's database yet (migration 0020). Planned prices are shown.",
+    loadError: "The plan details cannot be loaded right now.",
+  },
   orgSettings: {
     title: "Organisation settings",
     subtitle: "Organisation details, language and time zone.",

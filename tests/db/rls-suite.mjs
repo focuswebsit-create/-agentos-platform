@@ -2733,6 +2733,344 @@ try {
       else bad(g, "the slug is stored in lower case", `got ${r.rows[0].slug}`);
     }
   }
+
+  /* ---- 16. plans, subscriptions and entitlements (0020) ------------ */
+  g = "16-entitlements";
+  {
+    const owner = await makeUser(m, `ent-owner-${tag}@example.test`);
+    const member = await makeUser(m, `ent-member-${tag}@example.test`);
+    const outsider = await makeUser(m, `ent-outsider-${tag}@example.test`);
+    const org = await makeOrg(m, `org-ent-${tag}`, owner, 5);
+    await addMember(m, org, member, "member");
+    const otherOrg = await makeOrg(m, `org-ent-other-${tag}`, outsider, 5);
+
+    const agentIn = async (name, budget = 1_000_000) => {
+      let id;
+      await act(t, member, async () => {
+        id = (await t.query(`select public.create_agent($1,$2,null) as id`, [org, name])).rows[0]
+          .id;
+      });
+      await m.query(
+        `update public.agent_versions set config_json=$2::jsonb
+         where agent_id=$1 and published_at is null`,
+        [
+          id,
+          JSON.stringify({
+            provider: "mock",
+            model: "mock:deterministic",
+            maxSpendUsdMicros: budget,
+          }),
+        ],
+      );
+      await act(t, member, () => t.query(`select public.publish_agent_version($1)`, [id]));
+      return id;
+    };
+    const ent = async (who, orgId) => {
+      let out;
+      await act(t, who, async () => {
+        out = (await t.query(`select public.effective_entitlements($1) as e`, [orgId])).rows[0].e;
+      });
+      return out;
+    };
+    const versionId = async (code) =>
+      (
+        await m.query(`select id from public.plan_versions where plan_code=$1 and version=1`, [
+          code,
+        ])
+      ).rows[0].id;
+    const dispatch = async (agentId) => {
+      try {
+        await act(t, member, () =>
+          t.query(`select public.start_run($1,'{}'::jsonb,null)`, [agentId]),
+        );
+        return "ok";
+      } catch (e) {
+        return String(e.message).split("\n")[0];
+      }
+    };
+
+    /* catalog */
+    await expectAllowed(g, "the plan catalog is readable signed out (pricing page)", async () => {
+      await t.query("SET ROLE anon");
+      try {
+        const r = await t.query(
+          `select pv.plan_code, pv.price_minor from public.plan_versions pv order by price_minor`,
+        );
+        const codes = r.rows.map((x) => x.plan_code).join(",");
+        if (codes !== "starter,business,pro") throw new Error(`got ${codes}`);
+      } finally {
+        await t.query("RESET ROLE").catch(() => {});
+      }
+    });
+    await expectRows(
+      g,
+      "nothing in the catalog is purchasable yet",
+      () => m.query(`select 1 from public.plan_versions where purchasable`),
+      0,
+    );
+    await expectDenied(
+      g,
+      "a published price cannot be changed, even by the schema owner",
+      () => m.query(`update public.plan_versions set price_minor=1 where plan_code='starter'`),
+      "PLAN_VERSION_IMMUTABLE",
+    );
+    await expectDenied(
+      g,
+      "a plan version cannot be deleted",
+      () => m.query(`delete from public.plan_versions where plan_code='pro'`),
+      "PLAN_VERSION_IMMUTABLE",
+    );
+    await expectDenied(
+      g,
+      "an org owner cannot write the catalog",
+      () =>
+        act(t, owner, () => t.query(`update public.plans set public_label='x' where code='pro'`)),
+      "permission denied",
+    );
+
+    /* pilot: no subscription = today's behaviour */
+    {
+      const e = await ent(member, org);
+      const cap = Number(
+        (
+          await m.query(
+            `select monthly_spend_cap_usd_micros from public.organizations where id=$1`,
+            [org],
+          )
+        ).rows[0].monthly_spend_cap_usd_micros,
+      );
+      if (
+        e.source === "pilot" &&
+        e.runsAllowed === true &&
+        e.maxSeats === 5 &&
+        e.maxConcurrentRuns === null &&
+        Number(e.monthlyModelBudgetUsdMicros) === cap
+      )
+        ok(g, "an org that never subscribed keeps exactly its current limits");
+      else
+        bad(g, "an org that never subscribed keeps exactly its current limits", JSON.stringify(e));
+    }
+    await expectDenied(
+      g,
+      "an outsider cannot read another org's entitlements",
+      () => ent(outsider, org),
+      "ORG_ACCESS_DENIED",
+    );
+    await expectDenied(
+      g,
+      "anon cannot ask for entitlements",
+      async () => {
+        await t.query("SET ROLE anon");
+        try {
+          await t.query(`select public.effective_entitlements($1)`, [org]);
+        } finally {
+          await t.query("RESET ROLE").catch(() => {});
+        }
+      },
+      "permission denied",
+    );
+    await expectDenied(
+      g,
+      "nobody may call the internal resolver directly",
+      () => act(t, owner, () => t.query(`select public.org_entitlements($1)`, [org])),
+      "permission denied",
+    );
+
+    /* subscriptions are the platform's to write */
+    await expectDenied(
+      g,
+      "an org owner cannot grant themselves a subscription",
+      async () => {
+        const pv = await versionId("pro");
+        await act(t, owner, () =>
+          t.query(
+            `insert into public.subscriptions (org_id, plan_version_id, provider, status)
+             values ($1,$2,'self','active')`,
+            [org, pv],
+          ),
+        );
+      },
+      "permission denied",
+    );
+
+    // The platform activates Starter (as a verified webhook processor would).
+    const starter = await versionId("starter");
+    const subId = (
+      await m.query(
+        `insert into public.subscriptions
+           (org_id, plan_version_id, provider, provider_subscription_id, status,
+            current_period_start, current_period_end)
+         values ($1,$2,'sandbox',$3,'active', now(), now() + interval '30 days') returning id`,
+        [org, starter, `sub-${tag}`],
+      )
+    ).rows[0].id;
+
+    {
+      const e = await ent(member, org);
+      if (
+        e.source === "subscription" &&
+        e.planCode === "starter" &&
+        e.maxConcurrentRuns === 1 &&
+        Number(e.monthlyModelBudgetUsdMicros) === 5_000_000
+      )
+        ok(g, "an active Starter subscription resolves to Starter's limits");
+      else bad(g, "an active Starter subscription resolves to Starter's limits", JSON.stringify(e));
+    }
+    await expectRows(
+      g,
+      "the owner sees the subscription",
+      () =>
+        act(t, owner, () => t.query(`select id from public.subscriptions where org_id=$1`, [org])),
+      1,
+    );
+    await expectRows(
+      g,
+      "a member does NOT see billing",
+      () =>
+        act(t, member, () => t.query(`select id from public.subscriptions where org_id=$1`, [org])),
+      0,
+    );
+    await expectRows(
+      g,
+      "another org sees 0 of this org's subscriptions",
+      () =>
+        act(t, outsider, () =>
+          t.query(`select id from public.subscriptions where org_id=$1`, [org]),
+        ),
+      0,
+    );
+    await expectDenied(
+      g,
+      "a second effective subscription for one org is refused",
+      async () => {
+        const pro = await versionId("pro");
+        await m.query(
+          `insert into public.subscriptions (org_id, plan_version_id, provider, status)
+           values ($1,$2,'sandbox','active')`,
+          [org, pro],
+        );
+      },
+      "subscriptions_one_effective_per_org",
+    );
+
+    /* enforcement in start_run */
+    const a1 = await agentIn("Ent one");
+    const a2 = await agentIn("Ent two");
+    {
+      const first = await dispatch(a1);
+      const second = await dispatch(a2);
+      if (first === "ok" && second.includes("RUN_CONCURRENCY_LIMIT"))
+        ok(g, "Starter's single concurrent run is enforced at dispatch");
+      else
+        bad(g, "Starter's single concurrent run is enforced at dispatch", `${first} | ${second}`);
+    }
+    // Finish the live run so the next checks measure something else.
+    await m.query(
+      `update public.runs set status='failed', ended_at=now(), started_at=coalesce(started_at, now())
+       where org_id=$1 and status in ('queued','running')`,
+      [org],
+    );
+    await m.query(
+      `update public.usage_reservations set status='released' where org_id=$1 and status='active'`,
+      [org],
+    );
+    await m.query(`update public.usage_periods set reserved_usd_micros=0 where org_id=$1`, [org]);
+
+    {
+      const big = await agentIn("Ent big", 6_000_000);
+      const r = await dispatch(big);
+      if (r.includes("USAGE_LIMIT_REACHED"))
+        ok(g, "the plan's monthly AI budget caps a run larger than the allowance");
+      else bad(g, "the plan's monthly AI budget caps a run larger than the allowance", r);
+    }
+
+    /* overrides */
+    await m.query(
+      `insert into public.entitlement_overrides
+         (org_id, entitlement_key, value, reason, approved_by, expires_at)
+       values ($1,'max_concurrent_runs',3,'pilot extension',$2, now() + interval '1 day'),
+              ($1,'max_seats',50,'expired grant',$2, now() + interval '1 second')`,
+      [org, owner],
+    );
+    await m.query(`select pg_sleep(1.2)`);
+    {
+      const e = await ent(member, org);
+      if (e.maxConcurrentRuns === 3 && e.maxSeats === 1)
+        ok(g, "an unexpired override applies; an expired one does not");
+      else bad(g, "an unexpired override applies; an expired one does not", JSON.stringify(e));
+    }
+    await expectDenied(
+      g,
+      "an override without a reason is refused",
+      () =>
+        m.query(
+          `insert into public.entitlement_overrides
+             (org_id, entitlement_key, value, reason, approved_by, expires_at)
+           values ($1,'max_seats',9,'',$2, now() + interval '1 day')`,
+          [org, owner],
+        ),
+      "entitlement_overrides_reason_check",
+    );
+
+    /* lapsed */
+    await m.query(`update public.subscriptions set status='canceled' where id=$1`, [subId]);
+    {
+      const e = await ent(member, org);
+      const r = await dispatch(a1);
+      if (e.source === "lapsed" && e.runsAllowed === false && r.includes("SUBSCRIPTION_INACTIVE"))
+        ok(g, "a lapsed subscription stops new runs and keeps the workspace readable");
+      else
+        bad(
+          g,
+          "a lapsed subscription stops new runs and keeps the workspace readable",
+          `${JSON.stringify(e)} | ${r}`,
+        );
+    }
+    await expectRows(
+      g,
+      "a lapsed org can still read its agents",
+      () => act(t, member, () => t.query(`select id from public.agents where id=$1`, [a1])),
+      1,
+    );
+
+    /* webhook dedupe */
+    await expectAllowed(g, "service_role records a provider event", async () => {
+      await p.query("SET ROLE service_role");
+      try {
+        await p.query(
+          `insert into public.billing_webhook_events (provider, event_id, payload_digest)
+           values ('sandbox',$1,'\\x00'::bytea)`,
+          [`evt-${tag}`],
+        );
+      } finally {
+        await p.query("RESET ROLE").catch(() => {});
+      }
+    });
+    await expectDenied(
+      g,
+      "the same provider event cannot be recorded twice (replay)",
+      async () => {
+        await p.query("SET ROLE service_role");
+        try {
+          await p.query(
+            `insert into public.billing_webhook_events (provider, event_id, payload_digest)
+             values ('sandbox',$1,'\\x01'::bytea)`,
+            [`evt-${tag}`],
+          );
+        } finally {
+          await p.query("RESET ROLE").catch(() => {});
+        }
+      },
+      "billing_webhook_events_dedupe",
+    );
+    await expectDenied(
+      g,
+      "customers cannot read provider events in any role",
+      () => act(t, owner, () => t.query(`select id from public.billing_webhook_events`)),
+      "permission denied",
+    );
+    void otherOrg;
+  }
 } finally {
   await m.end().catch(() => {});
   await t.end().catch(() => {});

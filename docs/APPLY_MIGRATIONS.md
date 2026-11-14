@@ -160,6 +160,17 @@ records the billed cost and leaves it cancelled. Verified locally:
 
 Runs work without 0019; it closes a rare double-count race.
 
+### Then 0020 (plans, subscriptions, entitlements)
+
+Paste `supabase/migrations/0020_billing_entitlements.sql` the same way, after
+0019. It creates six tables, two functions and replaces `start_run`. It inserts
+the three plans (version 1, `purchasable = false`) and changes no existing row.
+**Existing organisations behave exactly as before**: with no subscription,
+every limit resolves to the organisation's current columns (verified locally:
+all of group 12's run tests pass unchanged; group 16 covers the new rules).
+After applying it, the billing screen shows the plan catalog from the database
+instead of the planned fallback.
+
 ---
 
 ## If something goes wrong
