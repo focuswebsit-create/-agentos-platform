@@ -186,9 +186,7 @@ export const en: Dictionary = {
     rights: "© {year} AgentOS",
   },
   app: {
-    workspace: "Example workspace",
-    demoBanner:
-      "Demo environment — no account connected and all data is empty. Nothing here actually executes.",
+    workspace: "Workspace",
     nav: {
       dashboard: "Overview",
       agents: "Agents",
@@ -218,14 +216,17 @@ export const en: Dictionary = {
         spend: "Estimated AI cost",
         approvals: "Pending approvals",
       },
-      cardsNote: "No data — no organization connected",
+      cardsNotPlanned: "Arrives in phase {phase}",
+      members: "Team members",
+      seats: "Seats in use",
+      pendingInvites: "Pending invitations",
       quickStart: {
         title: "First steps",
-        items: [
-          "Create an organization and account (phase P1)",
-          "Pick a template or a blank agent (phase P2)",
-          "Run a test with a real AI provider (phase P3)",
-        ],
+        orgCreated: "Organisation created",
+        inviteTeam: "Invite your team",
+        inviteTeamDone: "Team invited",
+        buildAgent: "Build your first agent — arrives in phase P2",
+        runAgent: "Run against a real AI provider — arrives in phase P3",
       },
       studioCard: {
         title: "Agent Studio",

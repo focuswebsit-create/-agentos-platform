@@ -1,7 +1,16 @@
 import type { LucideIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
-/** KPI tile that renders an explicit empty value until real data exists. */
+/**
+ * KPI tile.
+ *
+ * `note` is what distinguishes a measured value from a placeholder. With a
+ * note the number is dimmed, because a note means "this is not real data yet"
+ * — an em dash plus "arrives in phase P3". Without one the number is a real
+ * measurement and is rendered at full contrast, so the two can never be
+ * confused at a glance.
+ */
 export function StatCard({
   icon: Icon,
   label,
@@ -11,7 +20,7 @@ export function StatCard({
   icon: LucideIcon;
   label: string;
   value: string;
-  note: string;
+  note?: string;
 }) {
   return (
     <Card className="gap-3 py-5 transition-shadow hover:shadow-md" data-testid="stat-card">
@@ -22,10 +31,15 @@ export function StatCard({
             <Icon aria-hidden className="size-4" />
           </span>
         </div>
-        <p className="text-3xl font-semibold tracking-tight text-muted-foreground/70 tabular-nums">
+        <p
+          className={cn(
+            "text-3xl font-semibold tracking-tight tabular-nums",
+            note ? "text-muted-foreground/70" : "text-foreground",
+          )}
+        >
           {value}
         </p>
-        <p className="text-xs text-muted-foreground">{note}</p>
+        {note ? <p className="text-xs text-muted-foreground">{note}</p> : null}
       </CardContent>
     </Card>
   );

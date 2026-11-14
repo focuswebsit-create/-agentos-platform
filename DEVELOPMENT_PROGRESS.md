@@ -65,6 +65,10 @@ local pre-commit scan reports INCOMPLETE, never PASS. CI was only triggered by
 pull requests and pushes to `main`, which meant the full scan had never run on
 this branch at all; the workflow now also triggers on `claude/**`.
 
+**CI run 3 on `2cdb20e`: both jobs green.** Secret scan (gitleaks v8.30.1,
+full history) success; Lint · Typecheck · Format · Unit · Build · E2E all
+success. That closes the gap the local INCOMPLETE verdict leaves open.
+
 ---
 
 ## NOT verified — never reported as passing
@@ -145,5 +149,6 @@ chain is proven end to end would build on an untested foundation.
 ### Independent of the blockers, and safe to start now
 - P2 groundwork: `agents` / `agent_versions` migrations with RLS, following
   the same layered pattern, verified on the local cluster.
-- Harden `/app` section pages: they still render P0 empty states inside a shell
-  that is now real.
+- The remaining `/app` section pages (agents, runs, workflows, …) still render
+  P0 empty states inside a shell that is now real. The overview page has been
+  corrected; the rest carry the same stale "not connected" wording.

@@ -185,8 +185,7 @@ export const he = {
     rights: "© {year} AgentOS",
   },
   app: {
-    workspace: "סביבת עבודה לדוגמה",
-    demoBanner: "סביבת הדגמה — אין חשבון מחובר וכל הנתונים ריקים. שום פעולה כאן אינה מתבצעת באמת.",
+    workspace: "סביבת העבודה",
     nav: {
       dashboard: "סקירה",
       agents: "סוכנים",
@@ -216,14 +215,17 @@ export const he = {
         spend: "עלות AI מוערכת",
         approvals: "ממתינים לאישור",
       },
-      cardsNote: "אין נתונים — לא מחובר ארגון",
+      cardsNotPlanned: "יופעל בשלב {phase}",
+      members: "חברי צוות",
+      seats: "מושבים בשימוש",
+      pendingInvites: "הזמנות ממתינות",
       quickStart: {
         title: "צעדים ראשונים",
-        items: [
-          "יצירת ארגון וחשבון (שלב P1)",
-          "בחירת תבנית או סוכן ריק (שלב P2)",
-          "הרצת בדיקה עם ספק AI אמיתי (שלב P3)",
-        ],
+        orgCreated: "הארגון נוצר",
+        inviteTeam: "הזמינו את הצוות",
+        inviteTeamDone: "הצוות הוזמן",
+        buildAgent: "בניית סוכן ראשון — יופעל בשלב P2",
+        runAgent: "הרצה מול ספק AI אמיתי — יופעל בשלב P3",
       },
       studioCard: {
         title: "Agent Studio",
