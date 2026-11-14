@@ -6,7 +6,7 @@ sections under **History** are append-only.
 
 **Last updated:** 2026-11-14
 **Branch:** `claude/agentos-p1-infrastructure-9gibn2` (never merged to `main`; no production deploy)
-**Last commit:** `ec00dc5` (knowledge) — see `RELEASE_READINESS.md` for the gate matrix
+**Last commit:** `11bf5c9` (settlement period fix 0023, Hebrew retrieval, sources) — gate matrix in `RELEASE_READINESS.md`, journey in `P07_FINAL_ACCEPTANCE.md`
 
 ---
 
@@ -139,19 +139,24 @@ at the network proxy. Commit build status is read from GitHub commit statuses.
 
 ## Next task
 
-1. Owner: `RELEASE_READINESS.md` §3 (preview env vars, migrations 0019–0022,
-   run MARKET on Simulation, Production Branch check, payment provider choice).
-2. P4 Web Chat: ADR first (public endpoint, per-agent publishable key,
-   rate limit, budget), then widget + conversations + human handoff.
-3. API rate limiting for public endpoints (residual risk R2).
+1. Owner: apply `supabase/migrations/0023_settlement_period.sql` (no data
+   changes); run the "מגדלור סגול 47" simulation check in
+   `P07_FINAL_ACCEPTANCE.md`; choose a payment provider; approve or decline the
+   $0.05 Claude smoke test.
+2. P4 Web Chat — ADR first: per-agent publishable widget key, origin
+   allow-list, per-IP and per-agent rate limits, conversation tables with RLS,
+   budget from the owning org, human handoff state.
+3. Workflows / scheduled runs (needs a scheduler that runs on Preview: Vercel
+   Cron is Production-only).
+4. Tools registry + human approval on exact arguments (before any outbound
+   action, incl. WhatsApp).
 
 ### Resume checkpoint
 
-Branch `claude/agentos-p1-infrastructure-9gibn2` at `ec00dc5`, clean, pushed.
-Local DB suite: `/root/.agentos-rls-test/rls-cluster.sh start && npm run test:rls`
-(245 checks). Migrations 0019–0022 are files only; the hosted Development DB has
-0001–0018. Gates: lint, typecheck, format:check, test, build, test:e2e, test:rls,
-secret scan — all green at `ec00dc5`.
+Branch `claude/agentos-p1-infrastructure-9gibn2` at `11bf5c9`, clean, pushed.
+Hosted Development has migrations 0001–0022 (owner-applied). 0023 is a file.
+Local: `/root/.agentos-rls-test/rls-cluster.sh start && npm run test:rls` (249).
+All gates green at `11bf5c9`.
 
 ---
 

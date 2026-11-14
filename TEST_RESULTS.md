@@ -3,6 +3,18 @@
 Exact results per pushed milestone, newest first. "Local DB" means PostgreSQL 16
 with the Supabase compatibility shim in this container — not Supabase.
 
+## `11bf5c9` — settlement period (0023), Hebrew retrieval, sources (2026-11-14)
+
+lint 0 · typecheck 0 · format 0 · unit 29 files / 388 passed · build 0 · e2e 34 passed ·
+RLS 249 PASS · secret scan findings=0. Group 19 (4 checks) fails 4/4 without 0023 and
+passes 4/4 with it. Real Postgres FTS check: the query for "מה כתוב על מגדלור סגול?"
+matches "…מגדלור סגול 47" and "…במגדלור…", not unrelated text.
+Incremental file 03 (0019–0022) rehearsed on exactly 0001–0018: applied; second run
+refused, schema fingerprint unchanged; 245/245 on the result.
+
+**Preview, owner-verified:** simulation draft test "הסתיים" with trace + usage;
+knowledge document/chunk created; 0019–0022 objects 10/10 present.
+
 ## `ec00dc5` — knowledge sources (2026-11-14)
 
 lint 0 · typecheck 0 · format 0 · unit 29 files / 380 passed · build 0 · e2e 34 passed ·
