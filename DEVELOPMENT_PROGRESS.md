@@ -356,6 +356,68 @@ restored it.
 
 ---
 
+## P3 begins: the money, before the model
+
+Three migrations (`0013`–`0015`) and 37 new checks. `runs`, `run_steps`,
+`usage_events`, `usage_reservations`, `usage_periods`, a per-tenant spend cap,
+and the transactional reservation that enforces it.
+`docs/adr/0010-p3-runtime-schema.md` records the reasoning.
+
+Nothing here runs an agent. The executor and the provider adapter come next;
+this is the part that has to be right before a single token is spent.
+
+**Money is integer micros, and the unit is in the column name.**
+`DATA_MODEL.md` sketches `budget_usd` / `spent_usd`; every one is
+`*_usd_micros`. A cent is too coarse — per-token pricing puts a call below
+$0.0001, and rounding each to a cent turns a real bill into zero. And
+`budget_usd` holding `2000000` invites someone to read it as two million
+dollars, which is a factor of a million in the direction nobody notices until
+the invoice.
+
+**The organisation row is the lock, always taken first.** The seat gate already
+did this; the three new RPCs do the same. It gives one total order per tenant,
+so a dispatch and a membership change cannot deadlock — and it avoids the upsert
+race on `usage_periods`, where `insert … on conflict do nothing` followed by
+`select … for update` can see nothing at all, because a concurrent uncommitted
+insert is invisible to the select and does not block it.
+
+**Reserved budget counts against the cap**, exactly as pending invitations count
+against seats. Without it, N runs dispatched before any settles all see the same
+headroom. Two concurrent dispatches against a cap with room for one produce
+exactly one run and one `USAGE_LIMIT_REACHED`.
+
+**Reservations expire, because workers die.** A crashed worker never settles or
+releases, and the organisation's cap would shrink permanently — silently, and
+more with each crash. The sweeper reclaims the budget and marks the run `failed`
+with `RUN_ABANDONED`, because a run nobody will report on is finished whatever
+its row says.
+
+**Idempotency returns the run rather than raising.** A client retrying a
+dispatch it is unsure about must get the same run back; "duplicate key" would
+leave it unable to tell whether the first attempt worked, which is the exact
+uncertainty the key exists to remove. Two concurrent dispatches with one key
+produce one run and no error.
+
+**Customers read; the execution plane writes.** No customer role can INSERT or
+UPDATE any of the five tables. The trace is visible to everyone, including
+viewers, and carries no prompt or completion text. Per-call spend and monthly
+totals are owner and admin only. Reservations are visible to nobody — a
+reservation is a number held mid-flight, and showing it would display spend that
+may never happen.
+
+### A test that would have passed while the bug shipped
+
+The settlement check asserted that `spent` rose by the settled amount and that
+`reserved` fell by the reservation. The first assertion passed; the second
+caught that the earlier spend-cap block had already released every active
+reservation in that organisation, so there was nothing left to free. Had the
+test only checked `spent` — the obvious thing to check — a settlement that never
+frees budget would have looked correct. The fix was a run of its own for that
+test; the lesson is that the ledger has two sides and a test with one side is
+half a test.
+
+---
+
 ## Decisions on record
 
 `docs/adr/0001` single app · `0002` admin boundary in P1, dashboards in P6 ·
@@ -363,7 +425,8 @@ restored it.
 `0005` active-organisation cookie and its two-tab limit ·
 `0006` schema additions beyond `DATA_MODEL.md` · `0007` prepared OAuth path ·
 `0008` P2 agent and version schema ·
-`0009` P2 template catalog.
+`0009` P2 template catalog ·
+`0010` P3 runtime schema and the money.
 
 ---
 
@@ -380,9 +443,6 @@ gate at the UI layer, not only at the database layer.
 chain is proven end to end would build on an untested foundation.
 
 ### Independent of the blockers, and safe to start now
-- **P2: template catalog** — `global_templates`, `global_template_versions`
-  and `template_installations`, which deliver the other half of the P2 gate
-  ("install copy; unauthorized template editing denied").
 - **A production path for the catalog.** Templates are platform content and
   there is no way to publish one except inserting rows by hand until P6's Super
   Admin. In production the catalog is therefore empty, which is the right

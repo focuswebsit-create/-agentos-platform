@@ -571,3 +571,88 @@ P2 is complete at the database and UI layers. The next phases split by blocker:
 - **P6 (Super Admin)** is unblocked, and it is also the only path to publishing
   production templates.
 - **P4 (teams, knowledge, approvals)** is unblocked at the schema layer.
+
+---
+
+## 2026-11-14 — P3 step 1: runtime schema, spend cap and reservations
+
+Scope stated before coding: the database layer of P3 — tables, the per-tenant
+cap, and the transactional reservation. Not in scope: the executor, the provider
+adapter, LangGraph, Inngest, any API route or screen.
+
+### Changed
+
+| File | Change |
+|---|---|
+| `supabase/migrations/0013_runtime.sql` | new — `run_status`/`run_step_kind`/`run_step_status`/`usage_reservation_status`, `runs`, `run_steps`, `usage_events`, `usage_reservations`, `usage_periods`, `organizations.monthly_spend_cap_usd_micros` |
+| `supabase/migrations/0014_runtime_rls.sql` | new — read-only for customers, writes for `service_role`, and a `DO` block that fails the migration if the cap ever becomes customer-updatable |
+| `supabase/migrations/0015_runtime_rpc.sql` | new — `start_run`, `settle_run`, `cancel_run`, `expire_stale_reservations`, `org_usage_summary`, `current_usage_period` |
+| `src/modules/api/respond.ts` | `USAGE_LIMIT_REACHED` mapped (the code was already in the taxonomy; nothing raised it before) |
+| `tests/db/rls-suite.mjs` | group 12: 37 checks |
+| `docs/adr/0010-p3-runtime-schema.md` | new |
+
+**Not applied to Supabase.** Verified only on the local cluster.
+
+### Commands and exact results
+
+| Command | Result |
+|---|---|
+| `npm run lint` | exit 0 |
+| `npm run typecheck` | exit 0 |
+| `npm run format:check` | exit 0 |
+| `npm test` | exit 0 — `Tests 145 passed (145)` |
+| `npm run build` | exit 0 |
+| `npm run test:e2e` | exit 0 — `22 passed` |
+| `npm run test:rls` | exit 0 — `PASS 159 FAIL 0 SKIP 0` |
+| secret scan (local) | `findings=0 errors=0 credential_files=0` |
+| gitleaks | not run locally; CI runs it over full history |
+
+### What the 37 checks cover
+
+Dispatch and the role matrix; version pinning (a draft-only agent raises
+`AGENT_VERSION_MISSING`, an archived one `AGENT_ARCHIVED`); idempotency,
+sequentially and under two concurrent transactions; the spend cap with reserved
+counted, both sequentially (2 admitted, 3rd refused) and under concurrency
+(exactly 1 of 2); settlement moving reserved into spent, and refused for a
+non-terminal status; cancellation releasing the reservation, and being a no-op
+on a finished run; the sweeper reclaiming an expired reservation and marking the
+run `RUN_ABANDONED`; who may read runs, traces, per-call spend, monthly totals
+and reservations; the cap being unwritable by its own owner; a run unable to pin
+another organisation's version; and the `ended_at` consistency constraint.
+
+### Two test defects, one of which matters
+
+1. `usage_reservations` answered `permission denied` where the test expected
+   zero rows. The stricter outcome — the privilege is revoked, so RLS is never
+   reached. Rewritten to accept either and fail on a leaked row, matching the
+   `platform_admins` check that already existed.
+
+2. **The settlement test would have passed while the bug shipped.** It asserted
+   that `spent` rose by the settled amount *and* that `reserved` fell by the
+   reservation. The first passed. The second caught that the spend-cap block
+   earlier in the group had released every active reservation in that
+   organisation, so settlement had nothing to free. A test that checked only
+   `spent` — the obvious thing to check — would have reported success for a
+   settlement that never frees budget, and the cap would have drifted downward
+   on every run in production. Fixed with a dedicated run for that test.
+
+### Not verified
+
+Unchanged, plus:
+
+- **No provider is connected and no executor exists.** These tables can record a
+  run; nothing can perform one. The `start_run` path has been exercised only by
+  the RLS suite against the local cluster.
+- The sweeper has no schedule. It is a function; nothing calls it yet.
+- `usage_events` is written by the suite directly, not by a runtime.
+
+### Next, and what is blocked
+
+| Work | State |
+|---|---|
+| Provider adapter + deterministic mock | **Unblocked.** `ROADMAP.md`'s P3 gate names "deterministic mocked unit tests" explicitly, so the mock is part of the plan, not a workaround. |
+| Executor and run state machine | Unblocked on top of the mock. |
+| Runs UI (list, trace, cancel) | Unblocked. |
+| **"One actual LLM provider"** | **Blocked on the owner.** A real provider key means real charges on their account. Needs an explicit decision. |
+| P5 billing | **Blocked on the owner**: merchant account and provider selection. |
+| P6 Super Admin | Unblocked — and it is also the only path to publishing production templates. |

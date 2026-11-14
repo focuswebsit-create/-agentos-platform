@@ -58,6 +58,12 @@ export function mapDatabaseError(message: string | undefined): {
   if (m.includes("SEAT_LIMIT_REACHED")) {
     return { code: "SEAT_LIMIT_REACHED", message: "לא נותרו מושבים פנויים בארגון." };
   }
+  if (m.includes("USAGE_LIMIT_REACHED")) {
+    return {
+      code: "USAGE_LIMIT_REACHED",
+      message: "הגעתם לתקרת ההוצאה החודשית של הארגון.",
+    };
+  }
   if (m.includes("ORG_SLUG_TAKEN") || m.includes("organizations_slug_unique")) {
     return { code: "ORG_SLUG_TAKEN", message: "המזהה הזה כבר תפוס. בחרו מזהה אחר." };
   }

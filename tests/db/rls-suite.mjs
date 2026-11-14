@@ -1528,6 +1528,585 @@ try {
       },
     );
   }
+
+  /* ---- 12. runtime: runs, trace, spend cap, idempotency (P3) ----- */
+  g = "12-runtime";
+  {
+    const ownerR = await makeUser(m, `run-owner-${tag}@example.test`);
+    const orgR = await makeOrg(m, `org-run-${tag}`, ownerR, 10);
+    const memberR = await makeUser(m, `run-member-${tag}@example.test`);
+    const viewerR = await makeUser(m, `run-viewer-${tag}@example.test`);
+    await addMember(m, orgR, memberR, "member");
+    await addMember(m, orgR, viewerR, "viewer");
+
+    const strangerR = await makeUser(m, `run-out-${tag}@example.test`);
+    const orgStranger = await makeOrg(m, `org-run-other-${tag}`, strangerR, 10);
+
+    const BUDGET = 2_000_000; // $2.00 in micros
+
+    /** An agent with a published version, which is the only runnable thing. */
+    const publishedAgent = async (name, budget = BUDGET) => {
+      let id;
+      await act(t, memberR, async () => {
+        id = (await t.query(`select public.create_agent($1,$2,null) as id`, [orgR, name])).rows[0]
+          .id;
+      });
+      await m.query(
+        `update public.agent_versions set config_json = $2::jsonb
+         where agent_id=$1 and published_at is null`,
+        [id, JSON.stringify({ provider: "anthropic", model: "m", maxSpendUsdMicros: budget })],
+      );
+      await act(t, memberR, () => t.query(`select public.publish_agent_version($1)`, [id]));
+      return id;
+    };
+
+    const setCap = (cap) =>
+      m.query(`update public.organizations set monthly_spend_cap_usd_micros=$2 where id=$1`, [
+        orgR,
+        cap,
+      ]);
+
+    /* -- dispatch and the role matrix -- */
+    const agentR = await publishedAgent("Runnable agent");
+    let runId;
+    await expectAllowed(g, "a member can start a run", () =>
+      act(t, memberR, async () => {
+        const r = await t.query(`select public.start_run($1,'{}'::jsonb,null) as out`, [agentR]);
+        runId = r.rows[0].out.run_id;
+        if (r.rows[0].out.reused !== false) throw new Error("a fresh run reported reused=true");
+      }),
+    );
+    await expectDenied(
+      g,
+      "a viewer cannot start a run",
+      () =>
+        act(t, viewerR, () => t.query(`select public.start_run($1,'{}'::jsonb,null)`, [agentR])),
+      "ORG_ACCESS_DENIED",
+    );
+    await expectDenied(
+      g,
+      "an outsider cannot start a run in someone else's org",
+      () =>
+        act(t, strangerR, () => t.query(`select public.start_run($1,'{}'::jsonb,null)`, [agentR])),
+      "ORG_ACCESS_DENIED",
+    );
+
+    /* -- a run pins a PUBLISHED version -- */
+    {
+      const r = await m.query(
+        `select r.agent_version_id, v.published_at, r.budget_usd_micros, r.status
+         from public.runs r join public.agent_versions v on v.id = r.agent_version_id
+         where r.id=$1`,
+        [runId],
+      );
+      const row = r.rows[0];
+      if (
+        row.published_at !== null &&
+        Number(row.budget_usd_micros) === BUDGET &&
+        row.status === "queued"
+      )
+        ok(g, "the run pins a published version and takes its budget from it");
+      else
+        bad(
+          g,
+          "the run pins a published version and takes its budget from it",
+          `published_at=${row.published_at} budget=${row.budget_usd_micros} status=${row.status}`,
+        );
+    }
+    await expectDenied(
+      g,
+      "a draft-only agent has nothing to run",
+      async () => {
+        let draftOnly;
+        await act(t, memberR, async () => {
+          draftOnly = (
+            await t.query(`select public.create_agent($1,$2,null) as id`, [orgR, "Never published"])
+          ).rows[0].id;
+        });
+        await act(t, memberR, () =>
+          t.query(`select public.start_run($1,'{}'::jsonb,null)`, [draftOnly]),
+        );
+      },
+      "AGENT_VERSION_MISSING",
+    );
+    await expectDenied(
+      g,
+      "an archived agent cannot be run",
+      async () => {
+        const archived = await publishedAgent("To be archived");
+        await act(t, ownerR, () =>
+          t.query(`select public.set_agent_archived($1,true)`, [archived]),
+        );
+        await act(t, memberR, () =>
+          t.query(`select public.start_run($1,'{}'::jsonb,null)`, [archived]),
+        );
+      },
+      "AGENT_ARCHIVED",
+    );
+
+    /* -- idempotency -- */
+    {
+      const key = `idem-${tag}`;
+      let first, second;
+      await act(t, memberR, async () => {
+        first = (await t.query(`select public.start_run($1,'{}'::jsonb,$2) as out`, [agentR, key]))
+          .rows[0].out;
+        second = (await t.query(`select public.start_run($1,'{}'::jsonb,$2) as out`, [agentR, key]))
+          .rows[0].out;
+      });
+      if (first.run_id === second.run_id && first.reused === false && second.reused === true)
+        ok(g, "the same idempotency key returns the same run, marked reused");
+      else
+        bad(
+          g,
+          "the same idempotency key returns the same run, marked reused",
+          `${JSON.stringify(first)} vs ${JSON.stringify(second)}`,
+        );
+    }
+
+    /* -- the spend cap, and reserved counting against it -- */
+    {
+      // Room for exactly two runs at $2 each, with nothing settled.
+      await setCap(5_000_000);
+      const capAgent = await publishedAgent("Cap agent");
+      await m.query(
+        `update public.usage_periods set spent_usd_micros=0, reserved_usd_micros=0
+         where org_id=$1`,
+        [orgR],
+      );
+      // Clear what earlier tests reserved, so this measures the cap and not them.
+      await m.query(
+        `update public.usage_reservations set status='released' where org_id=$1 and status='active'`,
+        [orgR],
+      );
+
+      const outcomes = [];
+      for (let i = 0; i < 3; i++) {
+        try {
+          await act(t, memberR, () =>
+            t.query(`select public.start_run($1,'{}'::jsonb,null)`, [capAgent]),
+          );
+          outcomes.push("ok");
+        } catch (e) {
+          outcomes.push(String(e.message).split("\n")[0]);
+        }
+      }
+      const admitted = outcomes.filter((o) => o === "ok").length;
+      const capped = outcomes.filter((o) => o.includes("USAGE_LIMIT_REACHED")).length;
+      if (admitted === 2 && capped === 1)
+        ok(g, "reserved budget counts against the cap: 2 admitted, the 3rd refused");
+      else
+        bad(
+          g,
+          "reserved budget counts against the cap: 2 admitted, the 3rd refused",
+          `outcomes: ${outcomes.join(" | ")}`,
+        );
+    }
+
+    /* -- settlement is the execution plane's, not the customer's -- */
+    await expectDenied(
+      g,
+      "no customer role may execute settle_run",
+      () =>
+        act(t, ownerR, () =>
+          t.query(`select public.settle_run($1,'succeeded'::public.run_status,1,null,null)`, [
+            runId,
+          ]),
+        ),
+      "permission denied",
+    );
+    for (const [col, val] of [
+      ["status", `'succeeded'::public.run_status`],
+      ["spent_usd_micros", "0"],
+    ]) {
+      await expectDenied(
+        g,
+        `no customer role may write runs.${col} directly`,
+        () =>
+          act(t, ownerR, () =>
+            t.query(`update public.runs set ${col}=${val} where id=$1`, [runId]),
+          ),
+        "permission denied",
+      );
+    }
+    // A run of its own. The spend-cap block above releases every active
+    // reservation in this organisation, so settling an earlier run would find
+    // nothing to release - and an assertion on `spent` alone would still have
+    // passed, which is how a settlement that never frees budget goes unnoticed.
+    const settleAgent = await publishedAgent("Settlement");
+    await setCap(50_000_000);
+    let settleRun;
+    await act(t, memberR, async () => {
+      settleRun = (
+        await t.query(`select public.start_run($1,'{}'::jsonb,null) as out`, [settleAgent])
+      ).rows[0].out.run_id;
+    });
+    await expectAllowed(g, "service_role settles a run, moving reserved into spent", async () => {
+      await p.query("SET ROLE service_role");
+      try {
+        const before = (
+          await p.query(
+            `select spent_usd_micros, reserved_usd_micros from public.usage_periods where org_id=$1`,
+            [orgR],
+          )
+        ).rows[0];
+        await p.query(`select public.settle_run($1,'succeeded'::public.run_status,$2,null,null)`, [
+          settleRun,
+          750000,
+        ]);
+        const after = (
+          await p.query(
+            `select spent_usd_micros, reserved_usd_micros from public.usage_periods where org_id=$1`,
+            [orgR],
+          )
+        ).rows[0];
+        const spentDelta = Number(after.spent_usd_micros) - Number(before.spent_usd_micros);
+        const reservedDelta =
+          Number(before.reserved_usd_micros) - Number(after.reserved_usd_micros);
+        if (spentDelta !== 750000) throw new Error(`spent moved by ${spentDelta}, expected 750000`);
+        if (reservedDelta !== BUDGET)
+          throw new Error(`reserved released ${reservedDelta}, expected ${BUDGET}`);
+      } finally {
+        await p.query("RESET ROLE").catch(() => {});
+      }
+    });
+    await expectDenied(
+      g,
+      "settle_run refuses a non-terminal status",
+      async () => {
+        await p.query("SET ROLE service_role");
+        try {
+          await p.query(`select public.settle_run($1,'running'::public.run_status,0,null,null)`, [
+            settleRun,
+          ]);
+        } finally {
+          await p.query("RESET ROLE").catch(() => {});
+        }
+      },
+      "VALIDATION_FAILED",
+    );
+
+    /* -- cancellation gives the budget back -- */
+    {
+      const cancelAgent = await publishedAgent("Cancellable");
+      await setCap(50_000_000);
+      let cancelRun;
+      await act(t, memberR, async () => {
+        cancelRun = (
+          await t.query(`select public.start_run($1,'{}'::jsonb,null) as out`, [cancelAgent])
+        ).rows[0].out.run_id;
+      });
+      const before = Number(
+        (
+          await m.query(`select reserved_usd_micros from public.usage_periods where org_id=$1`, [
+            orgR,
+          ])
+        ).rows[0].reserved_usd_micros,
+      );
+      await expectAllowed(g, "a member can cancel their org's run", () =>
+        act(t, memberR, () => t.query(`select public.cancel_run($1)`, [cancelRun])),
+      );
+      const after = Number(
+        (
+          await m.query(`select reserved_usd_micros from public.usage_periods where org_id=$1`, [
+            orgR,
+          ])
+        ).rows[0].reserved_usd_micros,
+      );
+      if (before - after === BUDGET) ok(g, "cancelling releases the reservation");
+      else bad(g, "cancelling releases the reservation", `reserved moved by ${before - after}`);
+
+      await expectAllowed(g, "cancelling an already-finished run is not an error", () =>
+        act(t, memberR, async () => {
+          const r = await t.query(`select public.cancel_run($1) as s`, [cancelRun]);
+          if (r.rows[0].s !== "cancelled") throw new Error(`got ${r.rows[0].s}`);
+        }),
+      );
+      await expectDenied(
+        g,
+        "an outsider cannot cancel another org's run",
+        () => act(t, strangerR, () => t.query(`select public.cancel_run($1)`, [cancelRun])),
+        "ORG_ACCESS_DENIED",
+      );
+    }
+
+    /* -- abandoned runs do not hold budget forever -- */
+    {
+      const lostAgent = await publishedAgent("Abandoned");
+      let lostRun;
+      await act(t, memberR, async () => {
+        lostRun = (
+          await t.query(`select public.start_run($1,'{}'::jsonb,null) as out`, [lostAgent])
+        ).rows[0].out.run_id;
+      });
+      await m.query(
+        `update public.usage_reservations set expires_at = now() - interval '1 minute'
+         where run_id=$1 and status='active'`,
+        [lostRun],
+      );
+      await expectAllowed(g, "the sweeper reclaims an expired reservation", async () => {
+        await p.query("SET ROLE service_role");
+        try {
+          const n = (await p.query(`select public.expire_stale_reservations() as n`)).rows[0].n;
+          if (Number(n) < 1) throw new Error(`swept ${n} reservations, expected at least 1`);
+        } finally {
+          await p.query("RESET ROLE").catch(() => {});
+        }
+      });
+      const row = (
+        await m.query(
+          `select r.status, r.error_code, res.status as res_status
+           from public.runs r
+           join public.usage_reservations res on res.run_id = r.id
+           where r.id=$1`,
+          [lostRun],
+        )
+      ).rows[0];
+      if (
+        row.status === "failed" &&
+        row.error_code === "RUN_ABANDONED" &&
+        row.res_status === "expired"
+      )
+        ok(g, "an abandoned run is marked failed rather than left running forever");
+      else
+        bad(
+          g,
+          "an abandoned run is marked failed rather than left running forever",
+          `run=${row.status}/${row.error_code} reservation=${row.res_status}`,
+        );
+    }
+
+    /* -- who may read what -- */
+    await expectRows(
+      g,
+      "org B sees 0 of org A's runs",
+      () => act(t, strangerR, () => t.query(`select id from public.runs where org_id=$1`, [orgR])),
+      0,
+    );
+    await expectRows(
+      g,
+      "a viewer DOES see the org's runs",
+      () => act(t, viewerR, () => t.query(`select id from public.runs where id=$1`, [runId])),
+      1,
+    );
+    {
+      await m.query(
+        `insert into public.run_steps (org_id, run_id, step_index, kind, status, provider, model)
+         values ($1,$2,0,'model_call','succeeded','anthropic','m')`,
+        [orgR, runId],
+      );
+      await m.query(
+        `insert into public.usage_events (org_id, run_id, provider, model, cost_usd_micros, estimate_source)
+         values ($1,$2,'anthropic','m',750000,'provider_reported')`,
+        [orgR, runId],
+      );
+    }
+    await expectRows(
+      g,
+      "a viewer sees the trace, which carries no prompt or completion text",
+      () =>
+        act(t, viewerR, () => t.query(`select id from public.run_steps where run_id=$1`, [runId])),
+      1,
+    );
+    await expectRows(
+      g,
+      "a viewer does NOT see per-call spend",
+      () =>
+        act(t, viewerR, () =>
+          t.query(`select id from public.usage_events where org_id=$1`, [orgR]),
+        ),
+      0,
+    );
+    await expectRows(
+      g,
+      "a member does NOT see per-call spend either",
+      () =>
+        act(t, memberR, () =>
+          t.query(`select id from public.usage_events where org_id=$1`, [orgR]),
+        ),
+      0,
+    );
+    await expectRows(
+      g,
+      "an owner DOES see per-call spend",
+      () =>
+        act(t, ownerR, () => t.query(`select id from public.usage_events where org_id=$1`, [orgR])),
+      1,
+    );
+    await expectRows(
+      g,
+      "org B sees 0 of org A's run steps",
+      () =>
+        act(t, strangerR, () => t.query(`select id from public.run_steps where org_id=$1`, [orgR])),
+      0,
+    );
+    for (const [label, userId] of [
+      ["owner", ownerR],
+      ["member", memberR],
+      ["viewer", viewerR],
+    ]) {
+      // Same shape as the platform_admins check: RLS with no policy returns no
+      // rows, and the revoked privilege refuses outright. Either is a pass;
+      // leaking a row is not.
+      const name = `usage_reservations is invisible to ${label}`;
+      try {
+        const r = await act(t, userId, () =>
+          t.query(`select id from public.usage_reservations where org_id=$1`, [orgR]),
+        );
+        if (r.rowCount === 0) ok(g, `${name} (zero rows)`);
+        else bad(g, name, `leaked ${r.rowCount} row(s)`);
+      } catch (e) {
+        if (String(e.message).includes("permission denied")) ok(g, `${name} (permission denied)`);
+        else bad(g, name, `unexpected error: ${String(e.message).split("\n")[0]}`);
+      }
+    }
+    await expectDenied(
+      g,
+      "a member cannot read the org usage summary",
+      () => act(t, memberR, () => t.query(`select public.org_usage_summary($1)`, [orgR])),
+      "ORG_ACCESS_DENIED",
+    );
+    await expectAllowed(g, "an owner can read the org usage summary", () =>
+      act(t, ownerR, async () => {
+        const r = await t.query(`select public.org_usage_summary($1) as s`, [orgR]);
+        if (typeof r.rows[0].s.capUsdMicros !== "number") throw new Error("no cap in the summary");
+      }),
+    );
+    await expectDenied(
+      g,
+      "the usage summary is not an oracle for another org",
+      () => act(t, ownerR, () => t.query(`select public.org_usage_summary($1)`, [orgStranger])),
+      "ORG_ACCESS_DENIED",
+    );
+    await expectDenied(
+      g,
+      "nobody may raise their own spend cap",
+      () =>
+        act(t, ownerR, () =>
+          t.query(
+            `update public.organizations set monthly_spend_cap_usd_micros=999999999 where id=$1`,
+            [orgR],
+          ),
+        ),
+      "permission denied",
+    );
+
+    /* -- keys and constraints -- */
+    await expectDenied(
+      g,
+      "a run cannot pin another org's agent version",
+      async () => {
+        let foreignAgent;
+        await act(t, strangerR, async () => {
+          foreignAgent = (
+            await t.query(`select public.create_agent($1,$2,null) as id`, [orgStranger, "Theirs"])
+          ).rows[0].id;
+        });
+        const foreignVersion = (
+          await m.query(
+            `select id from public.agent_versions where agent_id=$1 and published_at is null`,
+            [foreignAgent],
+          )
+        ).rows[0].id;
+        await m.query(
+          `insert into public.runs (org_id, agent_id, agent_version_id, budget_usd_micros)
+           values ($1,$2,$3,1000)`,
+          [orgR, agentR, foreignVersion],
+        );
+      },
+      "runs_version_fk",
+    );
+    await expectDenied(
+      g,
+      "a finished run must have an end time",
+      () =>
+        m.query(
+          `insert into public.runs (org_id, agent_id, agent_version_id, budget_usd_micros, status)
+           values ($1,$2,(select agent_version_id from public.runs where id=$3),1000,'succeeded')`,
+          [orgR, agentR, runId],
+        ),
+      "runs_ended_consistent",
+    );
+
+    /* -- the cap under concurrency -- */
+    {
+      const raceAgent = await publishedAgent("Cap race");
+      await m.query(
+        `update public.usage_periods set spent_usd_micros=0, reserved_usd_micros=0 where org_id=$1`,
+        [orgR],
+      );
+      await m.query(
+        `update public.usage_reservations set status='released' where org_id=$1 and status='active'`,
+        [orgR],
+      );
+      await setCap(3_000_000); // room for exactly one $2 run
+
+      const c1 = asMigrator(),
+        c2 = asMigrator();
+      await c1.connect();
+      await c2.connect();
+      const claims = JSON.stringify({ sub: memberR, role: "authenticated", aal: "aal1" });
+      for (const c of [c1, c2]) {
+        await c.query("SELECT set_config('request.jwt.claims', $1, false)", [claims]);
+        await c.query("BEGIN");
+      }
+      const d1 = c1.query(`select public.start_run($1,'{}'::jsonb,null) as out`, [raceAgent]);
+      await new Promise((r) => setTimeout(r, 150)); // let c1 take the organisation lock
+      const d2 = c2.query(`select public.start_run($1,'{}'::jsonb,null) as out`, [raceAgent]);
+      const o1 = await d1.then(() => "ok").catch((e) => e.message);
+      await c1.query("COMMIT").catch(() => {});
+      const o2 = await d2.then(() => "ok").catch((e) => e.message);
+      await c2.query("COMMIT").catch(() => {});
+      await c1.end();
+      await c2.end();
+
+      const admitted = [o1, o2].filter((x) => x === "ok").length;
+      const capped = [o1, o2].filter((x) => String(x).includes("USAGE_LIMIT_REACHED")).length;
+      if (admitted === 1 && capped === 1)
+        ok(g, "spend cap under two concurrent dispatches: exactly one admitted");
+      else
+        bad(
+          g,
+          "spend cap under two concurrent dispatches: exactly one admitted",
+          `[${o1}] / [${o2}]`,
+        );
+    }
+
+    /* -- idempotency under concurrency -- */
+    {
+      const idemAgent = await publishedAgent("Idempotency race");
+      await setCap(50_000_000);
+      const key = `race-idem-${tag}`;
+      const c1 = asMigrator(),
+        c2 = asMigrator();
+      await c1.connect();
+      await c2.connect();
+      const claims = JSON.stringify({ sub: memberR, role: "authenticated", aal: "aal1" });
+      for (const c of [c1, c2]) {
+        await c.query("SELECT set_config('request.jwt.claims', $1, false)", [claims]);
+      }
+      const results = await Promise.allSettled([
+        c1.query(`select public.start_run($1,'{}'::jsonb,$2) as out`, [idemAgent, key]),
+        c2.query(`select public.start_run($1,'{}'::jsonb,$2) as out`, [idemAgent, key]),
+      ]);
+      await c1.end();
+      await c2.end();
+
+      const { rows } = await m.query(
+        `select count(*)::int as n from public.runs where org_id=$1 and idempotency_key=$2`,
+        [orgR, key],
+      );
+      const failures = results.filter((r) => r.status === "rejected");
+      if (rows[0].n === 1 && failures.length === 0)
+        ok(g, "two concurrent dispatches with one idempotency key create exactly one run");
+      else
+        bad(
+          g,
+          "two concurrent dispatches with one idempotency key create exactly one run",
+          `runs=${rows[0].n} rejected=${failures.map((f) => String(f.reason).split("\n")[0]).join(" | ")}`,
+        );
+    }
+  }
 } finally {
   await m.end().catch(() => {});
   await t.end().catch(() => {});
