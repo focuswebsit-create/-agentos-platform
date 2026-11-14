@@ -342,3 +342,83 @@ been observed. There is no API route and no UI for agents yet.
 
 P2 template catalog (`global_templates`, `global_template_versions`,
 `template_installations`), then the Agent Studio screens.
+
+---
+
+## 2026-11-14 — P2 step 2: Agent Studio
+
+Scope stated before coding: API routes and screens on top of the schema from
+step 1. Not in scope: templates, the onboarding wizard, any provider call.
+
+### Changed
+
+| File | Change |
+|---|---|
+| `src/modules/contracts/agent.ts` | `AgentDraftConfigSchema` (lenient, for drafting) and `validateForPublish()` (strict, one place) |
+| `src/modules/agents/data.ts` | new — `listAgents`, `getAgent` |
+| `src/modules/tenancy/permissions.ts` | `agent.read/create/update/publish/archive` |
+| `src/modules/api/respond.ts` | agent codes mapped **before** the `insufficient_privilege` catch-all |
+| `src/app/api/agents/**` | 5 routes: create, update, save draft, publish, archive |
+| `src/components/agents/*` | `CreateAgentForm`, `AgentEditor` |
+| `src/app/app/agents/{page,[id]/page}.tsx` | list and editor |
+| `src/components/auth/api-client.ts` | `PUT`; carries the server's `message` through |
+| `src/components/auth/form-parts.tsx` | `info` tone, `role="status"` not `alert` |
+| `src/components/app-shell/nav-config.ts` | `agents` → `phase: null` |
+| **removed** | `src/app/app/agents/studio`, `src/components/studio`, `tests/unit/studio.test.tsx`, the `studio` dictionary block |
+| `tests/unit/model-registry.test.ts` | new — the assertions kept from the deleted suite |
+| `tests/unit/agent-config.test.ts` | new — 11 checks on the draft/publish split |
+| `tests/e2e/smoke.spec.ts` | all five agent routes refuse an anonymous CSRF-less call; `/app/agents/[id]` redirects |
+
+### Commands and exact results
+
+| Command | Result |
+|---|---|
+| `npm run lint` | exit 0 |
+| `npm run typecheck` | exit 0 |
+| `npm run format:check` | exit 0 |
+| `npm test` | exit 0 — `Tests 141 passed (141)` |
+| `npm run build` | exit 0 |
+| `npm run test:e2e` | exit 0 — `20 passed` |
+| `npm run test:rls` | exit 0 — `PASS 93 FAIL 0 SKIP 0` |
+| secret scan (local) | `findings=0 errors=0 credential_files=0` |
+| gitleaks | not run locally (not installed); CI runs it over full history |
+
+Unit count went 145 → 141: `tests/unit/studio.test.tsx` (9 checks on the deleted
+preview) was removed and 5 were added back as `model-registry.test.ts`, alongside
+11 new ones in `agent-config.test.ts` and 2 in `api-client.test.ts`.
+
+### Two defects fixed during the work
+
+1. `onClick={saveDraft}` handed React's `MouseEvent` to the function's first
+   parameter, which had become `announce: boolean`. TypeScript refused it.
+2. `publish()` awaited `saveDraft()` and continued regardless of the outcome. A
+   failed save would have published the previously stored configuration while
+   the screen displayed the newer one — the worst of the three possible
+   outcomes, because nothing would have looked wrong. `saveDraft` now returns a
+   boolean and `publish` stops on false.
+
+### Deliberate choices
+
+- **Spend edited in dollars, stored as integer micros**, rounded to the nearest
+  cent before scaling. `DATA_MODEL.md` forbids floating point for money.
+- **Validation runs before `guardApi`** in every route, because the guard needs
+  `submittedOrgId` from the parsed body to detect a workspace switched in
+  another tab. A malformed body therefore answers 400 to an anonymous caller;
+  the e2e test uses valid bodies so it exercises the guard and not Zod.
+- **The demo studio was removed rather than left in place.** A disabled mock
+  editor one URL away from a working one is a trap, not a placeholder.
+- **No provider is configured, and the screen says so** before publishing, not
+  after (CLAUDE.md rule 4). Publishing defines an agent; it cannot run one.
+
+### Not verified
+
+Unchanged, plus: no agent screen has been exercised against Supabase. The flow
+create → edit → publish is proven at the database layer by the RLS suite and at
+the contract layer by unit tests; the UI path has not run against a real
+session, because no migration has been applied to any Supabase project.
+
+### Next
+
+P2 template catalog: `global_templates`, `global_template_versions`,
+`template_installations`, which deliver the rest of the P2 gate
+("install copy; unauthorized template editing denied").

@@ -46,7 +46,7 @@ export interface AppNavItem {
 /** Customer workspace sidebar (UI_UX_SPEC.md "Customer workspace sidebar"). */
 export const APP_NAV: readonly AppNavItem[] = [
   { key: "dashboard", href: "/app", icon: LayoutDashboardIcon, group: null, phase: null },
-  { key: "agents", href: "/app/agents", icon: BotIcon, group: "build", phase: "P2" },
+  { key: "agents", href: "/app/agents", icon: BotIcon, group: "build", phase: null },
   { key: "teams", href: "/app/teams", icon: UsersRoundIcon, group: "build", phase: "P4" },
   { key: "workflows", href: "/app/workflows", icon: WorkflowIcon, group: "build", phase: "P4" },
   {

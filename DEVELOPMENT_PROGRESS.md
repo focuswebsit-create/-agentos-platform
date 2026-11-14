@@ -226,6 +226,55 @@ exists to prevent.
 
 ---
 
+## Agent Studio is real
+
+`/app/agents` lists the organisation's agents and creates one; `/app/agents/[id]`
+edits the draft, publishes a version and shows the published history. Five API
+routes sit behind them, each guarded by `guardApi` and each delegating state
+transitions to the RPCs rather than writing columns it has no privilege on.
+
+The draft is saved leniently and validated strictly only at publish. That split
+is the point: `AgentConfigSchema` requires ten characters of instructions, and
+an editor that could not save four of them would lose the user's work every time
+they stepped away mid-sentence. `validateForPublish()` is the single place the
+strict gate is applied, and it names the fields that are missing so the error is
+actionable rather than "publishing failed".
+
+**The spend cap is edited in dollars and stored as integer micros.** The
+conversion rounds to the nearest cent before scaling, so a typed `0.1` cannot
+arrive as `100000.00000000001`. `DATA_MODEL.md` forbids floating point for money
+and a float that reached a frozen version would be a rounding error nobody could
+trace back.
+
+**The provider and model pickers come from `MODEL_PROVIDERS`, and every option
+says "not configured".** A banner above the form states that no provider is
+connected, that an agent can be defined and published but not run, and that a
+real provider arrives in P3. That is stated before anything is published rather
+than discovered after.
+
+### The P0 demo studio is gone, not left beside the real one
+
+`/app/agents/studio` was a mock editor with every button disabled. With a working
+editor at `/app/agents/[id]`, a second fake one under the same section is a trap
+rather than a placeholder, so the route, its component and its dictionary block
+were removed and the dashboard card now points at the real screen.
+
+Its tests went with it except for the model-registry assertions, which moved to
+`tests/unit/model-registry.test.ts`. Those are not a test of that screen — they
+are the guarantee that nothing in this product can claim to run an agent until a
+provider is actually configured, and deleting them along with the page they
+happened to live in would have quietly dropped it.
+
+### A bug the compiler caught, and one it did not
+
+`onClick={saveDraft}` passed React's `MouseEvent` as the function's first
+argument; TypeScript refused it. The one it could not catch: `publish()` called
+`saveDraft()` and carried on regardless of the result, so a failed save would
+have published the previously stored configuration while the screen showed the
+newer one. It now stops.
+
+---
+
 ## Decisions on record
 
 `docs/adr/0001` single app · `0002` admin boundary in P1, dashboards in P6 ·
@@ -252,8 +301,8 @@ chain is proven end to end would build on an untested foundation.
 - **P2: template catalog** — `global_templates`, `global_template_versions`
   and `template_installations`, which deliver the other half of the P2 gate
   ("install copy; unauthorized template editing denied").
-- **P2: the Agent Studio screens** — the agent list, the draft editor and the
-  publish action, on top of the RPCs that now exist.
+- **P2: the onboarding wizard** — "create from template or blank", which the
+  template catalog unblocks.
 - The remaining `/app` section pages (agents, runs, workflows, …) still render
   P0 empty states inside a shell that is now real. The overview page has been
   corrected; the rest carry the same stale "not connected" wording.

@@ -161,7 +161,7 @@ export default async function DashboardPage() {
           </CardHeader>
           <CardContent className="relative">
             <Button asChild variant="brand">
-              <Link href="/app/agents/studio">{o.studioCard.button}</Link>
+              <Link href="/app/agents">{o.studioCard.button}</Link>
             </Button>
           </CardContent>
         </Card>

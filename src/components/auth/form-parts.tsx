@@ -1,7 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { AlertCircleIcon, CheckCircle2Icon, EyeIcon, EyeOffIcon, Loader2Icon } from "lucide-react";
+import {
+  AlertCircleIcon,
+  CheckCircle2Icon,
+  EyeIcon,
+  EyeOffIcon,
+  InfoIcon,
+  Loader2Icon,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -103,18 +110,22 @@ export function FormAlert({
   tone,
   children,
 }: {
-  tone: "error" | "success";
+  tone: "error" | "success" | "info";
   children: React.ReactNode;
 }) {
-  const Icon = tone === "error" ? AlertCircleIcon : CheckCircle2Icon;
+  const Icon = tone === "error" ? AlertCircleIcon : tone === "info" ? InfoIcon : CheckCircle2Icon;
   return (
     <div
+      // Only an error interrupts a screen reader. "You have read-only access"
+      // is context, and announcing it assertively would talk over the user.
       role={tone === "error" ? "alert" : "status"}
       className={cn(
         "flex items-start gap-2.5 rounded-lg border px-3.5 py-3 text-sm",
         tone === "error"
           ? "border-destructive/30 bg-destructive/5 text-destructive"
-          : "border-success/30 bg-success/5 text-success",
+          : tone === "info"
+            ? "border-border bg-muted/50 text-muted-foreground"
+            : "border-success/30 bg-success/5 text-success",
       )}
     >
       <Icon className="mt-0.5 size-4 shrink-0" aria-hidden />

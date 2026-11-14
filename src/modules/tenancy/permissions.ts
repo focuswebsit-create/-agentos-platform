@@ -27,6 +27,13 @@ export const ORG_ACTIONS = [
   "invitation.revoke",
   "audit.read",
   "billing.manage",
+
+  // P2. Mirrors supabase/migrations/0007_agents_rls.sql.
+  "agent.read",
+  "agent.create",
+  "agent.update",
+  "agent.publish",
+  "agent.archive",
 ] as const;
 export type OrgAction = (typeof ORG_ACTIONS)[number];
 
@@ -45,6 +52,16 @@ const MATRIX: Readonly<Record<OrgAction, readonly OrgRole[]>> = {
   "invitation.revoke": ["owner", "admin"],
   "audit.read": ["owner", "admin"],
   "billing.manage": ["owner"],
+
+  // Agent Studio is the working surface of the product, so `member` can build
+  // and ship. Archiving withdraws something other people depend on, so it stays
+  // with owner and admin. ADR-0008 has the reasoning; 0007 has the policies
+  // that actually enforce it.
+  "agent.read": ["owner", "admin", "member", "viewer"],
+  "agent.create": ["owner", "admin", "member"],
+  "agent.update": ["owner", "admin", "member"],
+  "agent.publish": ["owner", "admin", "member"],
+  "agent.archive": ["owner", "admin"],
 };
 
 export function can(role: OrgRole, action: OrgAction): boolean {

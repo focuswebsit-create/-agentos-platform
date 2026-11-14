@@ -61,7 +61,7 @@ describe("sendJson", () => {
     // An unhandled rejection here would take the React tree down and show the
     // browser's "page couldn't load" screen instead of an error the user can act on.
     const res = await sendJson("/api/x", "POST", {});
-    expect(res).toEqual({ ok: false, code: null, status: NETWORK_ERROR_STATUS });
+    expect(res).toEqual({ ok: false, code: null, message: null, status: NETWORK_ERROR_STATUS });
   });
 
   it("surfaces the server's problem code", async () => {
@@ -74,13 +74,50 @@ describe("sendJson", () => {
         ),
     );
     const res = await sendJson("/api/x", "POST", {});
-    expect(res).toEqual({ ok: false, code: "SEAT_LIMIT_REACHED", status: 409 });
+    expect(res).toEqual({ ok: false, code: "SEAT_LIMIT_REACHED", message: null, status: 409 });
+  });
+
+  it("carries the server's message through, for failures only it can explain", async () => {
+    // The publish endpoint names the configuration fields that are missing.
+    // A caller that replaced this with a generic string would leave the user
+    // with "publishing failed" and nothing to act on.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            code: "AGENT_CONFIG_INVALID",
+            message: "חסרים השדות instructions, model.",
+          }),
+          { status: 422 },
+        ),
+      ),
+    );
+    const res = await sendJson("/api/x", "POST", {});
+    expect(res.ok).toBe(false);
+    if (res.ok) throw new Error("unreachable");
+    expect(res.message).toBe("חסרים השדות instructions, model.");
+  });
+
+  it("ignores a non-string message rather than rendering an object", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ code: "X", message: { a: 1 } }), { status: 400 }),
+        ),
+    );
+    const res = await sendJson("/api/x", "POST", {});
+    expect(res.ok).toBe(false);
+    if (res.ok) throw new Error("unreachable");
+    expect(res.message).toBeNull();
   });
 
   it("handles an error response with no JSON body", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("nope", { status: 500 })));
     const res = await sendJson("/api/x", "POST", {});
-    expect(res).toEqual({ ok: false, code: null, status: 500 });
+    expect(res).toEqual({ ok: false, code: null, message: null, status: 500 });
   });
 
   it("returns the parsed body on success", async () => {

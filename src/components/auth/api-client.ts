@@ -25,14 +25,22 @@ export function readCsrfToken(): string {
 }
 
 export type ApiResult<T> =
-  { ok: true; data: T } | { ok: false; code: string | null; status: number };
+  | { ok: true; data: T }
+  /**
+   * `message` is the server's own text from the `{code,message,requestId}`
+   * envelope. Some failures can only be acted on if the user reads it — the
+   * publish endpoint names which configuration fields are missing, and a
+   * caller that showed a generic string instead would leave them guessing.
+   * Callers that have a better phrase of their own should still prefer it.
+   */
+  | { ok: false; code: string | null; message: string | null; status: number };
 
 /** `status: 0` means the request never reached the server. */
 export const NETWORK_ERROR_STATUS = 0;
 
 export async function sendJson<T = unknown>(
   url: string,
-  method: "POST" | "PATCH" | "DELETE",
+  method: "POST" | "PUT" | "PATCH" | "DELETE",
   body: unknown,
 ): Promise<ApiResult<T>> {
   let response: Response;
@@ -43,7 +51,7 @@ export async function sendJson<T = unknown>(
       body: JSON.stringify(body),
     });
   } catch {
-    return { ok: false, code: null, status: NETWORK_ERROR_STATUS };
+    return { ok: false, code: null, message: null, status: NETWORK_ERROR_STATUS };
   }
 
   let payload: unknown = null;
@@ -55,11 +63,11 @@ export async function sendJson<T = unknown>(
   }
 
   if (!response.ok) {
-    const code =
-      payload && typeof payload === "object" && "code" in payload
-        ? String((payload as { code: unknown }).code)
-        : null;
-    return { ok: false, code, status: response.status };
+    const envelope =
+      payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
+    const code = "code" in envelope ? String(envelope.code) : null;
+    const message = typeof envelope.message === "string" ? envelope.message : null;
+    return { ok: false, code, message, status: response.status };
   }
 
   return { ok: true, data: payload as T };

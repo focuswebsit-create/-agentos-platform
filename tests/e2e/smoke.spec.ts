@@ -14,7 +14,14 @@ import { expect, test } from "@playwright/test";
 
 const PUBLIC_ROUTES = ["/", "/pricing"];
 const AUTH_ROUTES = ["/sign-in", "/sign-up", "/forgot-password", "/reset-password"];
-const PRIVATE_ROUTES = ["/app", "/app/agents", "/app/runs", "/app/billing", "/onboarding"];
+const PRIVATE_ROUTES = [
+  "/app",
+  "/app/agents",
+  "/app/agents/00000000-0000-4000-8000-000000000000",
+  "/app/runs",
+  "/app/billing",
+  "/onboarding",
+];
 
 test.describe("public routes render in Hebrew RTL", () => {
   for (const route of PUBLIC_ROUTES) {
@@ -115,4 +122,28 @@ test("state-changing API routes refuse an unauthenticated, CSRF-less call", asyn
   // Switching workspace must not be reachable by navigation.
   const getSwitch = await request.get("/api/orgs/switch");
   expect(getSwitch.status()).toBe(405);
+});
+
+test("agent routes are closed to an unauthenticated, CSRF-less caller", async ({ request }) => {
+  // The whole agent surface, not a sample of it: each route is a separate
+  // handler, and a new one added without a guard is exactly the kind of gap
+  // this test exists to catch.
+  const id = "00000000-0000-4000-8000-000000000000";
+  // Every body below is VALID. A body that fails Zod would answer 400 before
+  // the guard ran, and the test would pass without ever reaching the check it
+  // claims to make.
+  const calls = [
+    request.post("/api/agents", { data: { orgId: id, name: "Valid name" } }),
+    request.patch(`/api/agents/${id}`, {
+      data: { orgId: id, name: "Valid name", description: null },
+    }),
+    request.put(`/api/agents/${id}/draft`, { data: { orgId: id, config: {} } }),
+    request.post(`/api/agents/${id}/publish`, { data: { orgId: id } }),
+    request.post(`/api/agents/${id}/archive`, { data: { orgId: id, archived: true } }),
+  ];
+  for (const res of await Promise.all(calls)) {
+    // 403 for the CSRF refusal, 401 if the session check answers first; never
+    // 2xx, and never 500, which would mean the handler ran and then fell over.
+    expect([401, 403]).toContain(res.status());
+  }
 });

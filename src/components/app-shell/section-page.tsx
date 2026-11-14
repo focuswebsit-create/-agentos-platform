@@ -7,7 +7,6 @@ import { getNavItem, type AppSectionKey } from "./nav-config";
 
 /** Secondary links some empty states offer (internal routes only). */
 const SECTION_LINKS: Partial<Record<AppSectionKey, string>> = {
-  agents: "/app/agents/studio",
   billing: "/pricing",
 };
 

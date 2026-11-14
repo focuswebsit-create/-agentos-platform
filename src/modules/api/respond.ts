@@ -70,6 +70,24 @@ export function mapDatabaseError(message: string | undefined): {
   if (m.includes("ORG_REQUIRES_OWNER")) {
     return { code: "ORG_ACCESS_DENIED", message: "לארגון חייב להישאר בעל אחד לפחות." };
   }
+  // Before the insufficient_privilege catch-all below: AGENT_VERSION_IMMUTABLE
+  // is raised with that errcode, and would otherwise be reported as a
+  // permissions problem when it is in fact a rule nobody can be granted past.
+  if (m.includes("AGENT_VERSION_IMMUTABLE")) {
+    return {
+      code: "AGENT_VERSION_IMMUTABLE",
+      message: "גרסה שפורסמה אינה ניתנת לעריכה. פרסמו גרסה חדשה.",
+    };
+  }
+  if (m.includes("AGENT_ARCHIVED")) {
+    return { code: "AGENT_ARCHIVED", message: "הסוכן בארכיון. יש לשחזר אותו לפני פרסום." };
+  }
+  if (m.includes("AGENT_CONFIG_INVALID")) {
+    return { code: "AGENT_CONFIG_INVALID", message: "הגדרות הסוכן חסרות או אינן תקינות." };
+  }
+  if (m.includes("AGENT_VERSION_MISSING")) {
+    return { code: "AGENT_VERSION_MISSING", message: "לא נמצאה טיוטה לפרסום." };
+  }
   if (m.includes("ORG_ACCESS_DENIED") || m.includes("insufficient_privilege")) {
     return { code: "ORG_ACCESS_DENIED", message: "אין לכם הרשאה לבצע את הפעולה הזו." };
   }
