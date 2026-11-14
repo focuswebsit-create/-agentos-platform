@@ -72,7 +72,15 @@ test.describe("private routes are closed to anonymous visitors", () => {
 test("Super Admin answers 404, never 403, to anyone who is not a platform admin", async ({
   page,
 }) => {
-  for (const route of ["/admin", "/admin/organizations", "/admin/settings"]) {
+  // Every admin route, including the ones that read across tenants. A new
+  // screen added without a guard is exactly what this is here to catch.
+  for (const route of [
+    "/admin",
+    "/admin/organizations",
+    "/admin/usage",
+    "/admin/audit",
+    "/admin/settings",
+  ]) {
     const res = await page.goto(route);
     // 404 rather than 403: a 403 would confirm the surface exists.
     expect(res?.status(), route).toBe(404);

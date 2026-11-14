@@ -486,6 +486,53 @@ from `platform-admin` and `runtime`.
 
 ---
 
+## Super Admin reads what actually exists
+
+`/admin` now shows organisations, people, agents, runs, failed runs and model
+spend — all measured. `/admin/organizations` lists customers with seats, agent
+and run counts, last run and spend. `/admin/usage` breaks spend down by
+organisation, provider and model. `/admin/audit` is new.
+
+**MRR and paying organisations are absent, not zero.** `SUPER_ADMIN.md` defines
+MRR as recognised contracted recurring prices on active paid subscriptions, and
+there are no subscriptions until P5. A zero in those cards would be a financial
+statement, and a false one; they sit under a heading that says what they are
+waiting for.
+
+**The usage screen shows cost, not margin.** Gross margin is collected revenue
+minus direct variable costs, and there is no collected revenue yet. The page
+also names the rate-card version that priced each figure, because a number
+whose basis is invisible is a number nobody can check.
+
+### A cross-tenant read that cannot be audited does not happen
+
+`auditAdminAction()` swallowed its errors — right for a note alongside work
+that has already happened, wrong for a read that returns every tenant's data.
+A failed audit write would have produced a perfectly normal-looking screen and
+no record that anyone had looked.
+
+It returns a boolean now, and `auditOrRefuse()` throws when the row does not
+land. The admin reads call it **before** returning data, so a broken audit
+produces a broken admin screen — which someone notices and fixes — instead of
+unlogged access to every tenant, which nobody notices at all.
+
+### What these screens deliberately cannot show
+
+No email addresses, no agent configurations, no run inputs or outputs, no
+invitation tokens, no keys. `SUPER_ADMIN.md` limits support to non-sensitive
+account metadata and denies prompt access without break-glass; break-glass is
+not implemented, so there is no code path to misuse. The audit viewer does not
+even select `metadata_redacted` — that column is bounded by a CHECK, but a
+constraint is a promise about what callers wrote, and not reading it is the
+version of the promise a careless future caller cannot break. A test asserts it
+stays out of the select lists.
+
+Each page calls `requireAdminOrNotFound()` itself rather than trusting the
+layout. A layout runs for its children but does not stop them rendering, and in
+this module rendering means a cross-tenant read.
+
+---
+
 ## Decisions on record
 
 `docs/adr/0001` single app · `0002` admin boundary in P1, dashboards in P6 ·

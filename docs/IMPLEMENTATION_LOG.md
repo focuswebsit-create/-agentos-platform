@@ -869,3 +869,90 @@ metric has an honest place to go instead of appearing as a zero.
 | `npm run test:e2e` | exit 0 — `24 passed` |
 | `npm run test:rls` | exit 0 — `PASS 159 FAIL 0 SKIP 0` |
 | secret scan (local) | `findings=0 errors=0 credential_files=0` |
+
+---
+
+## 2026-11-14 — P6 step 1: Super Admin reads, audited and fail-closed
+
+Scope stated before coding: audited cross-tenant reads and the screens for
+them. Not in scope: suspension, plan overrides, refunds, break-glass, feature
+flags, template publishing, anything that needs subscriptions.
+
+### Changed
+
+| File | Change |
+|---|---|
+| `src/modules/platform-admin/data.ts` | new — `adminOverview`, `adminListOrganizations`, `adminUsageBreakdown`, `adminAuditLog` |
+| `src/modules/platform-admin/guard.ts` | `auditAdminAction` returns a boolean; new `auditOrRefuse`; new `requireAdminOrNotFound` |
+| `src/app/admin/page.tsx` | measured stats, with billing metrics absent rather than zero |
+| `src/app/admin/organizations/page.tsx` | the customer table |
+| `src/app/admin/usage/page.tsx` | spend by org, provider and model |
+| `src/app/admin/audit/page.tsx` | new |
+| `src/components/admin-shell/admin-nav-config.ts` | an `audit` section |
+| `src/i18n/{he,en}.ts` | the strings for all four screens |
+| `tests/unit/platform-admin-data.test.ts` | new — 4 checks |
+| `tests/e2e/smoke.spec.ts` | `/admin/usage` and `/admin/audit` added to the 404 sweep |
+
+### Commands and exact results
+
+| Command | Result |
+|---|---|
+| `npm run lint` | exit 0 |
+| `npm run typecheck` | exit 0 |
+| `npm run format:check` | exit 0 |
+| `npm test` | exit 0 — `Tests 182 passed (182)` |
+| `npm run build` | exit 0 |
+| `npm run test:e2e` | exit 0 — `24 passed` |
+| `npm run test:rls` | exit 0 — `PASS 159 FAIL 0 SKIP 0` |
+| secret scan (local) | `findings=0 errors=0 credential_files=0` |
+
+### The security defect found while building this
+
+`auditAdminAction()` swallowed its errors. That was right for its original
+caller — a note written alongside an action that had already happened, where
+crashing the page would be worse than losing the note. It is wrong for a read
+that returns every tenant's data: a failed audit write produced a perfectly
+normal-looking screen and no record that anyone had looked.
+
+It returns a boolean now. `auditOrRefuse()` throws when the row does not land,
+and the four read functions call it **before** returning data. The trade is
+deliberate: a broken admin screen is noticed and fixed; unlogged cross-tenant
+access is not noticed at all.
+
+### Deliberate omissions, each stated on its own screen
+
+- **MRR and paying organisations**: `SUPER_ADMIN.md` defines MRR from active
+  paid subscriptions and there are none until P5. Shown as "no data" under a
+  heading naming what they wait for, not as zero.
+- **Margin**: collected revenue minus direct variable costs. There is no
+  collected revenue, so the usage screen says "cost" and means it.
+- **Customer content**: no emails, configurations, run inputs or outputs,
+  tokens or keys. Break-glass is not implemented, so there is no path to
+  misuse rather than a path that is merely guarded.
+- **`metadata_redacted`** is not selected at all. A test asserts it stays out
+  of the select lists, scoped to those lists so the comment explaining the
+  absence can keep naming the column.
+
+### Two structural choices
+
+- Each page calls `requireAdminOrNotFound()` itself. A layout runs for its
+  children but does not stop them rendering, and here rendering means a
+  cross-tenant read.
+- Counts are gathered in bulk, not per organisation. The admin list is exactly
+  the screen that gets slower as the business grows, and N+1 there is a problem
+  that arrives with success.
+
+### Not verified
+
+No admin screen has run against Supabase, and no `platform_admins` row exists
+in any real project — blocker 5 in `docs/SUPABASE_SETUP.md`. The audit writes
+are proven by the RLS suite (group 8b) against the local cluster; the screens
+are proven to refuse anonymous callers by the e2e sweep.
+
+### Next
+
+1. Template publishing from Super Admin — the only path to a production
+   catalog, and currently the biggest functional gap outside billing.
+2. Suspension with reason and audit (`SUPER_ADMIN.md` "Actions and safeguards").
+3. **Blocked on the owner:** a real provider key, a merchant account, and the
+   seven Supabase setup items.

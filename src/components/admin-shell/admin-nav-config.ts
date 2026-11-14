@@ -5,12 +5,20 @@ import {
   CreditCardIcon,
   GaugeIcon,
   LayoutDashboardIcon,
+  ScrollTextIcon,
   SettingsIcon,
   type LucideIcon,
 } from "lucide-react";
 
 export type AdminNavKey =
-  "overview" | "organizations" | "subscriptions" | "usage" | "costs" | "alerts" | "settings";
+  | "overview"
+  | "organizations"
+  | "subscriptions"
+  | "usage"
+  | "costs"
+  | "audit"
+  | "alerts"
+  | "settings";
 
 export type AdminSectionKey = Exclude<AdminNavKey, "overview">;
 
@@ -27,6 +35,7 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
   { key: "subscriptions", href: "/admin/subscriptions", icon: CreditCardIcon },
   { key: "usage", href: "/admin/usage", icon: GaugeIcon },
   { key: "costs", href: "/admin/costs", icon: CoinsIcon },
+  { key: "audit", href: "/admin/audit", icon: ScrollTextIcon },
   { key: "alerts", href: "/admin/alerts", icon: BellRingIcon },
   { key: "settings", href: "/admin/settings", icon: SettingsIcon },
 ];

@@ -328,24 +328,45 @@ export const en: Dictionary = {
       subscriptions: "Subscriptions",
       usage: "Usage",
       costs: "Costs",
+      audit: "Audit log",
       alerts: "Alerts",
       settings: "System settings",
     },
     overview: {
       title: "Platform overview",
       subtitle: "Metrics will be computed only from real billing and usage events.",
+      pendingHeading: "Metrics waiting on billing (P5)",
+      pendingNote:
+        "Computed from real subscriptions. No figure yet, and a zero here would mislead.",
+      suspendedNote: "{n} organisations are suspended.",
       cards: {
+        organizations: "Organisations",
+        members: "People",
+        agents: "Agents",
+        runs: "Runs",
+        failedRuns: "Failed runs",
         mrr: "Paid MRR",
         paidOrgs: "Paid organizations",
-        apiCost: "Estimated API cost",
+        apiCost: "Model spend this month",
         incidents: "Open incidents",
       },
     },
     sections: {
       organizations: {
         title: "Customers",
-        subtitle: "Organizations, plan, status and active seats.",
+        subtitle: "Organizations, status, active seats and spend this month.",
         actions: ["Suspend organization", "Export metadata"],
+        privacyNote:
+          "Metadata only. No email addresses, agent configurations, or run inputs and outputs. Access to customer content requires a break-glass procedure that is not implemented.",
+        columns: {
+          name: "Organisation",
+          status: "Status",
+          members: "People",
+          agents: "Agents",
+          runs: "Runs",
+          lastRun: "Last run",
+          spend: "Spend this month",
+        },
       },
       subscriptions: {
         title: "Subscriptions",
@@ -354,13 +375,41 @@ export const en: Dictionary = {
       },
       usage: {
         title: "Usage",
-        subtitle: "Spend per organization, provider and model; budget reservations.",
+        subtitle: "Model spend per organization, provider and model, for the current period.",
         actions: ["Throttle organization"],
+        total: "Total",
+        basisNote:
+          "Cost only, not margin: there is no collected revenue until P5. Amounts the provider did not report are priced by rate card {version}, whose values are not real provider prices.",
+        columns: {
+          org: "Organisation",
+          provider: "Provider",
+          model: "Model",
+          calls: "Calls",
+          cost: "Cost",
+        },
       },
       costs: {
         title: "Costs",
         subtitle: "Provider, infrastructure and payment fees versus collected revenue.",
         actions: ["Export report"],
+      },
+      audit: {
+        title: "Audit log",
+        subtitle: "Who did what and when, including Super Admin reads.",
+        actions: [],
+        selfNote:
+          "Viewing this log is itself an audited action and will appear here on the next load. Event metadata is not displayed.",
+        actorTypes: {
+          user: "User",
+          platform_admin: "Super Admin",
+          system: "System",
+        },
+        columns: {
+          when: "When",
+          actor: "Actor",
+          action: "Action",
+          entity: "Entity",
+        },
       },
       alerts: {
         title: "Alerts",

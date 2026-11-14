@@ -1,3 +1,4 @@
+import { notFound } from "next/navigation";
 import { createSupabaseServerClient } from "@/modules/supabase/server";
 import { isSupabaseConfigured } from "@/config/env";
 import { createServiceRoleClient, isServiceRoleConfigured } from "@/modules/service-role/client";
@@ -99,14 +100,14 @@ export async function auditAdminAction(input: {
   entityId?: string | null;
   orgId?: string | null;
   metadata?: Record<string, unknown>;
-}): Promise<void> {
-  if (!isServiceRoleConfigured()) return;
+}): Promise<boolean> {
+  if (!isServiceRoleConfigured()) return false;
   try {
     const service = createServiceRoleClient();
     // log_platform_audit, not log_audit: this connection has no JWT, so
     // log_audit's auth.uid() would be null and the row would not name the
     // administrator who acted.
-    await service.rpc("log_platform_audit", {
+    const { error } = await service.rpc("log_platform_audit", {
       p_actor_user_id: input.actorUserId,
       p_action: input.action,
       p_entity_type: input.entityType,
@@ -114,8 +115,52 @@ export async function auditAdminAction(input: {
       p_entity_id: input.entityId ?? null,
       p_metadata: input.metadata ?? {},
     });
+    return !error;
   } catch {
-    // Never let an audit failure crash the page. It is reported by the
-    // database's own error logs; swallowing it here keeps the boundary usable.
+    return false;
   }
+}
+
+/**
+ * Audit a cross-tenant read, and throw if it could not be recorded.
+ *
+ * `auditAdminAction` returns false rather than throwing, which is right for a
+ * best-effort note alongside work that has already happened. It is wrong here.
+ * `SUPER_ADMIN.md` requires sensitive actions to be logged, and a cross-tenant
+ * read that returns data while its audit row silently failed to write is
+ * exactly the access nobody can later account for.
+ *
+ * Callers use this BEFORE returning data, so a failed audit means no data —
+ * a broken admin screen, which someone notices and fixes, instead of unlogged
+ * access to every tenant, which nobody notices at all.
+ */
+export async function auditOrRefuse(input: {
+  actorUserId: string;
+  action: string;
+  entityType: string;
+  entityId?: string | null;
+  orgId?: string | null;
+  metadata?: Record<string, unknown>;
+}): Promise<void> {
+  const recorded = await auditAdminAction(input);
+  if (!recorded) {
+    throw new Error(
+      `Refusing a cross-tenant read: its audit record could not be written (${input.action}).`,
+    );
+  }
+}
+
+/**
+ * `requirePlatformAdmin()` for a page, answering 404 on every failure.
+ *
+ * Each admin page calls this itself rather than trusting the layout. A layout
+ * runs for its children, but it does not stop them rendering: a page that
+ * assumed the layout had checked would still execute its own data fetch, and
+ * in this module a data fetch is a cross-tenant read. Authorisation belongs
+ * where the privileged work happens.
+ */
+export async function requireAdminOrNotFound(): Promise<PlatformAdmin> {
+  const guard = await requirePlatformAdmin();
+  if (!guard.ok) notFound();
+  return guard.admin;
 }
