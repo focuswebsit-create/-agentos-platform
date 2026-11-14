@@ -71,11 +71,23 @@ export class MockProvider implements ModelProvider {
       return { ok: false, code: "PROVIDER_REFUSED", usage: null, reportedCostUsdMicros: null };
     }
 
+    // What the simulation can honestly prove: that knowledge excerpts reached
+    // the provider boundary. It echoes how many arrived and how the first one
+    // begins - a data-path check, never evidence that a model understood them.
+    const excerpts = [
+      ...request.systemPrompt.matchAll(/<excerpt source="[^"]*">\n([\s\S]*?)\n<\/excerpt>/g),
+    ];
+    const knowledgeNote =
+      excerpts.length > 0
+        ? ` Knowledge excerpts received: ${excerpts.length}. First excerpt begins: "${(excerpts[0]?.[1] ?? "").slice(0, 120)}".`
+        : " Knowledge excerpts received: 0.";
+
     return {
       ok: true,
       output:
         MOCK_OUTPUT_PREFIX +
-        `Request digest: ${createHash("sha256").update(seed).digest("hex").slice(0, 16)}.`,
+        `Request digest: ${createHash("sha256").update(seed).digest("hex").slice(0, 16)}.` +
+        knowledgeNote,
       usage,
       // Null on purpose: the mock does not report cost, so the rate card prices
       // it and the event is recorded as `estimated`. That exercises the

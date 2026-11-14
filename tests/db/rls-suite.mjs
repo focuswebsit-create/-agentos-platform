@@ -3389,6 +3389,164 @@ try {
       "PLAN_FEATURE_UNAVAILABLE",
     );
   }
+
+  /* ---- 19. settlement period and idempotency (0023) ---------------- */
+  g = "19-settlement-period";
+  {
+    const owner = await makeUser(m, `sp-owner-${tag}@example.test`);
+    const member = await makeUser(m, `sp-member-${tag}@example.test`);
+    const org = await makeOrg(m, `org-sp-${tag}`, owner, 5);
+    await addMember(m, org, member, "member");
+    const BUDGET = 1_000_000;
+
+    let agent;
+    await act(t, member, async () => {
+      agent = (await t.query(`select public.create_agent($1,'Period',null) as id`, [org])).rows[0]
+        .id;
+    });
+    await m.query(
+      `update public.agent_versions set config_json=$2::jsonb where agent_id=$1 and published_at is null`,
+      [
+        agent,
+        JSON.stringify({
+          provider: "mock",
+          model: "mock:deterministic",
+          maxSpendUsdMicros: BUDGET,
+        }),
+      ],
+    );
+    await act(t, member, () => t.query(`select public.publish_agent_version($1)`, [agent]));
+
+    const dispatch = async () => {
+      let id;
+      await act(t, member, async () => {
+        id = (await t.query(`select public.start_run($1,'{}'::jsonb,null) as out`, [agent])).rows[0]
+          .out.run_id;
+      });
+      return id;
+    };
+    const period = async (expr) =>
+      (
+        await m.query(
+          `select coalesce(spent_usd_micros,0)::bigint as spent, coalesce(reserved_usd_micros,0)::bigint as reserved
+           from public.usage_periods where org_id=$1 and period_start = ${expr}`,
+          [org],
+        )
+      ).rows[0] ?? { spent: "0", reserved: "0" };
+    const PREV = `(date_trunc('month', now() at time zone 'utc') - interval '1 month')::date`;
+    const CUR = `date_trunc('month', now() at time zone 'utc')::date`;
+
+    // Move a freshly dispatched run, and its reservation, into last month: the
+    // state a run is in when it was dispatched before midnight on the 1st.
+    const backdate = async (runId) => {
+      await m.query(`update public.runs set created_at = now() - interval '40 days' where id=$1`, [
+        runId,
+      ]);
+      await m.query(
+        `update public.usage_periods set reserved_usd_micros = reserved_usd_micros - $2
+         where org_id=$1 and period_start = ${CUR}`,
+        [org, BUDGET],
+      );
+      await m.query(
+        `insert into public.usage_periods (org_id, period_start, reserved_usd_micros)
+         values ($1, ${PREV}, $2)
+         on conflict (org_id, period_start) do update
+           set reserved_usd_micros = public.usage_periods.reserved_usd_micros + $2`,
+        [org, BUDGET],
+      );
+    };
+    const asService = async (fn) => {
+      await p.query("SET ROLE service_role");
+      try {
+        return await fn();
+      } finally {
+        await p.query("RESET ROLE").catch(() => {});
+      }
+    };
+
+    {
+      const run = await dispatch();
+      await backdate(run);
+      const prevBefore = await period(PREV);
+      const curBefore = await period(CUR);
+      await asService(() =>
+        p.query(`select public.settle_run($1,'succeeded'::public.run_status,250000,null,null)`, [
+          run,
+        ]),
+      );
+      const prevAfter = await period(PREV);
+      const curAfter = await period(CUR);
+      const ok1 =
+        Number(prevBefore.reserved) - Number(prevAfter.reserved) === BUDGET &&
+        Number(prevAfter.spent) - Number(prevBefore.spent) === 250000 &&
+        Number(curAfter.reserved) === Number(curBefore.reserved) &&
+        Number(curAfter.spent) === Number(curBefore.spent);
+      if (ok1) ok(g, "a run settled after the month changed releases and charges its OWN month");
+      else
+        bad(
+          g,
+          "a run settled after the month changed releases and charges its OWN month",
+          JSON.stringify({ prevBefore, prevAfter, curBefore, curAfter }),
+        );
+    }
+
+    {
+      const run = await dispatch();
+      await backdate(run);
+      const prevBefore = await period(PREV);
+      const curBefore = await period(CUR);
+      await act(t, member, () => t.query(`select public.cancel_run($1)`, [run]));
+      const prevAfter = await period(PREV);
+      const curAfter = await period(CUR);
+      if (
+        Number(prevBefore.reserved) - Number(prevAfter.reserved) === BUDGET &&
+        Number(curAfter.reserved) === Number(curBefore.reserved)
+      )
+        ok(g, "cancelling after the month changed releases the reservation from its own month");
+      else
+        bad(
+          g,
+          "cancelling after the month changed releases the reservation from its own month",
+          JSON.stringify({ prevBefore, prevAfter, curBefore, curAfter }),
+        );
+    }
+
+    {
+      const run = await dispatch();
+      await act(t, member, () => t.query(`select public.cancel_run($1)`, [run]));
+      const before = await period(CUR);
+      for (let i = 0; i < 3; i++) {
+        await asService(() =>
+          p.query(`select public.settle_run($1,'succeeded'::public.run_status,400000,null,null)`, [
+            run,
+          ]),
+        );
+      }
+      const after = await period(CUR);
+      const r = (
+        await m.query(`select status, spent_usd_micros from public.runs where id=$1`, [run])
+      ).rows[0];
+      if (
+        Number(after.spent) - Number(before.spent) === 400000 &&
+        Number(r.spent_usd_micros) === 400000 &&
+        r.status === "cancelled"
+      )
+        ok(g, "a late settlement of a cancelled run, retried three times, is counted once");
+      else
+        bad(
+          g,
+          "a late settlement of a cancelled run, retried three times, is counted once",
+          JSON.stringify({ before, after, r }),
+        );
+    }
+
+    await expectDenied(
+      g,
+      "no customer role may call the period helper",
+      () => act(t, owner, () => t.query(`select public.run_usage_period(gen_random_uuid())`)),
+      "permission denied",
+    );
+  }
 } finally {
   await m.end().catch(() => {});
   await t.end().catch(() => {});

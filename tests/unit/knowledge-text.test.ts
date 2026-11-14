@@ -41,7 +41,26 @@ describe("chunkText", () => {
 
 describe("searchQueryFrom", () => {
   it("ORs the distinct words, so any of them can match", () => {
-    expect(searchQueryFrom("מתי יוצאים משלוחים? מתי")).toBe("מתי or יוצאים or משלוחים");
+    const q = (searchQueryFrom("what ships when? when") ?? "").split(" or ");
+    expect(q).toEqual(["what", "ships", "when"]);
+  });
+
+  it("matches a Hebrew word written with a prefix in the document", () => {
+    // The stored test phrase is "מגדלור סגול 47"; a document may say "במגדלור".
+    const q = (searchQueryFrom("מה זה מגדלור סגול?") ?? "").split(" or ");
+    expect(q).toContain("מגדלור");
+    expect(q).toContain("במגדלור");
+    expect(q).toContain("המגדלור");
+    expect(q).toContain("סגול");
+  });
+
+  it("finds the bare word when the QUESTION carries the prefix", () => {
+    const q = (searchQueryFrom("מה כתוב על המגדלור?") ?? "").split(" or ");
+    expect(q).toContain("מגדלור");
+  });
+
+  it("keeps numbers, so a code like 47 is searchable", () => {
+    expect((searchQueryFrom("סגול 47") ?? "").split(" or ")).toContain("47");
   });
 
   it("drops operators and punctuation, so input cannot reshape the query", () => {

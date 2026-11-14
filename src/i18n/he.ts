@@ -781,6 +781,9 @@ export const he = {
       no: "לא",
     },
     testBadge: "בדיקת טיוטה",
+    sourcesHeading: "מקורות",
+    retrievalCount: "שליפת ידע: נמצאו {n} קטעים רלוונטיים.",
+    retrievalUnavailable: "שליפת ידע: מאגרי הידע אינם זמינים בסביבה הזו.",
     statuses: {
       queued: "בתור",
       running: "רץ",

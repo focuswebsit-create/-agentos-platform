@@ -74,6 +74,9 @@ export default async function RunDetailPage(props: PageProps<"/app/runs/[id]">) 
   const tokensOut = run.steps.reduce((sum, step) => sum + num(step.summary.outputTokens), 0);
   const totalCost = run.steps.reduce((sum, step) => sum + (step.usageUsdMicros ?? 0), 0);
   const hasUsage = run.steps.some((step) => step.summary.inputTokens !== undefined);
+  const knowledgeStep = run.steps.find((step) => step.summary.knowledgeChunks !== undefined);
+  const knowledgeChunks = knowledgeStep ? num(knowledgeStep.summary.knowledgeChunks) : null;
+  const knowledgeUnavailable = knowledgeStep?.summary.knowledgeUnavailable === true;
 
   // Owners and admins see why a run could not execute, as booleans, without
   // reading server logs. Only fetched when it is relevant: it makes a probe.
@@ -139,6 +142,23 @@ export default async function RunDetailPage(props: PageProps<"/app/runs/[id]">) 
             {live ? t.runs.outputPending : t.runs.outputNone}
           </p>
         )}
+        {run.sources.length > 0 ? (
+          <div className="mt-4 border-t pt-3" data-testid="run-sources">
+            <p className="text-xs font-semibold text-muted-foreground">{t.runs.sourcesHeading}</p>
+            <ul className="mt-1 list-inside list-disc text-sm">
+              {run.sources.map((title) => (
+                <li key={title}>{title}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {knowledgeChunks !== null ? (
+          <p className="mt-2 text-xs text-muted-foreground" data-testid="run-retrieval">
+            {knowledgeUnavailable
+              ? t.runs.retrievalUnavailable
+              : t.runs.retrievalCount.replace("{n}", String(knowledgeChunks))}
+          </p>
+        ) : null}
         {run.truncated ? (
           <p className="mt-3 text-xs text-muted-foreground">{t.runs.usage.truncated}</p>
         ) : null}

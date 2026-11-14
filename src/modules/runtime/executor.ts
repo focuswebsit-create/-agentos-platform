@@ -327,7 +327,15 @@ export async function executeRun(
       cost,
       // `truncated` tells the reader the answer stopped at the output cap; an
       // answer cut mid-sentence and presented as complete would mislead.
-      { output: result.output, ...(result.truncated ? { truncated: true } : {}) },
+      {
+        output: result.output,
+        ...(result.truncated ? { truncated: true } : {}),
+        // Source references: the titles of the documents the excerpts came
+        // from. Titles only - the excerpts themselves are not stored again.
+        ...(retrieval.chunks.length > 0
+          ? { sources: [...new Set(retrieval.chunks.map((c) => c.title))].slice(0, 10) }
+          : {}),
+      },
       null,
     );
     if (!settled) return { ok: false, code: "SETTLEMENT_FAILED", costUsdMicros: cost };

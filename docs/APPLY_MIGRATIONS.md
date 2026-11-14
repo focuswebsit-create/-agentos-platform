@@ -139,6 +139,18 @@ and `SUPABASE_SECRET_KEY`, which the executor uses to record the run. See
 
 ---
 
+## Next: 0023 (one file, already single)
+
+`supabase/migrations/0023_settlement_period.sql` — paste it whole into the SQL
+Editor and Run. It replaces `settle_run`, `cancel_run` and
+`expire_stale_reservations` (same signatures and grants) and adds one internal
+helper. **No data changes.** It fixes two defects found on re-audit of the
+functions now on Development: settlement and cancellation used the CURRENT
+month instead of the run's own month (wrong period and possible cap overspend
+across a month boundary), and 0019's cancelled-run branch counted a retried
+late settlement twice. All four new checks in DB group 19 fail without it and
+pass with it. Safe to run more than once.
+
 ## Simplest: one file for 0019–0022
 
 `supabase/apply/03_incremental_0019_0022.sql` — all four in **one transaction**.

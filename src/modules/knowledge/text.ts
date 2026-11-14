@@ -76,9 +76,51 @@ export function chunkText(text: string): string[] {
 }
 
 /**
+ * Hebrew attaches prepositions, the article and conjunctions to the word:
+ * "המגדלור", "ומגדלור", "שבמגדלור". Postgres ships no Hebrew stemmer, and the
+ * 'simple' configuration matches words exactly, so "מגדלור" would not find
+ * "במגדלור". Rather than change the index, the QUERY carries the variants:
+ * each word with its common prefixes added, and with a leading prefix removed.
+ */
+const HEBREW_PREFIXES = [
+  "ה",
+  "ו",
+  "ב",
+  "כ",
+  "ל",
+  "מ",
+  "ש",
+  "וה",
+  "וב",
+  "ול",
+  "ומ",
+  "וש",
+  "שה",
+  "שב",
+  "של",
+  "מה",
+  "כש",
+  "לה",
+  "בה",
+];
+const HEBREW_LETTER = /^[\u05D0-\u05EA]/;
+
+function hebrewVariants(word: string): string[] {
+  if (!HEBREW_LETTER.test(word)) return [word];
+  const out = new Set<string>([word]);
+  for (const p of HEBREW_PREFIXES) {
+    out.add(p + word);
+    // Strip at most one prefix, and only if a real word (3+ letters) remains.
+    if (word.startsWith(p) && word.length - p.length >= 3) out.add(word.slice(p.length));
+  }
+  return [...out];
+}
+
+/**
  * A Postgres `websearch_to_tsquery` string from free text: the distinct words
- * of two or more letters, OR-ed, at most twelve. Punctuation and operators are
- * dropped so user input can never change the query's structure.
+ * of two or more letters (and their Hebrew prefix variants), OR-ed. Words are
+ * split on anything that is not a letter or digit, so punctuation and
+ * operators are dropped and user input can never change the query's structure.
  */
 export function searchQueryFrom(input: string): string | null {
   const words = sanitizeText(input)
@@ -86,7 +128,9 @@ export function searchQueryFrom(input: string): string | null {
     .split(/[^\p{L}\p{N}]+/u)
     .filter((w) => w.length >= 2);
   const unique = [...new Set(words)].slice(0, 12);
-  return unique.length > 0 ? unique.join(" or ") : null;
+  if (unique.length === 0) return null;
+  const terms = [...new Set(unique.flatMap(hebrewVariants))].slice(0, 200);
+  return terms.join(" or ");
 }
 
 export type RetrievedChunk = { title: string; content: string };

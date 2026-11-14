@@ -451,3 +451,19 @@ describe("executeRun - knowledge retrieval", () => {
     expect(db.calls.some((c) => c.table === "knowledge_chunks")).toBe(false);
   });
 });
+
+describe("executeRun - the 'מגדלור סגול 47' data path (simulation)", () => {
+  it("retrieves the phrase, hands it to the provider, cites the source, and says it is a simulation", async () => {
+    const { settles } = await run({
+      run: { ...QUEUED_RUN, input_json: { prompt: "מה הקוד? מגדלור" } },
+      config: { ...VALID_CONFIG, knowledgeBaseIds: ["77777777-7777-4777-8777-777777777777"] },
+      chunks: [{ content: "הקוד הסודי הוא מגדלור סגול 47.", document_id: "doc-1" }],
+    });
+    const result = settles[0]?.args.p_result as { output: string; sources?: string[] };
+    expect(result.sources).toEqual(["מדיניות משלוחים"]);
+    expect(result.output).toContain("Knowledge excerpts received: 1");
+    expect(result.output).toContain("מגדלור סגול 47");
+    // Proves the data path only. The output itself says no model was called.
+    expect(result.output).toContain("No language model was called");
+  });
+});

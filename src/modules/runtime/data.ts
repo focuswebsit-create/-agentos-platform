@@ -45,6 +45,8 @@ export type RunDetail = RunSummary & {
   output: string | null;
   /** The answer stopped at the output cap. */
   truncated: boolean;
+  /** Titles of the knowledge documents the run drew on. */
+  sources: string[];
   /**
    * The provider of the PINNED version this run executes - what it actually
    * used, which is what decides whether the simulation notice is shown. Not
@@ -104,7 +106,7 @@ export async function getRun(orgId: string, runId: string): Promise<RunDetail | 
   const row = runData as unknown as RunRow & {
     agent_version_id: string;
     started_at: string | null;
-    result_json: { output?: unknown; truncated?: unknown } | null;
+    result_json: { output?: unknown; truncated?: unknown; sources?: unknown } | null;
     config_snapshot?: { provider?: unknown } | null;
   };
 
@@ -158,6 +160,9 @@ export async function getRun(orgId: string, runId: string): Promise<RunDetail | 
     isTest: row.is_test === true,
     output: typeof row.result_json?.output === "string" ? row.result_json.output : null,
     truncated: row.result_json?.truncated === true,
+    sources: Array.isArray(row.result_json?.sources)
+      ? (row.result_json.sources as unknown[]).filter((x): x is string => typeof x === "string")
+      : [],
     versionProvider,
     startedAt: row.started_at,
     steps: steps.map((s) => ({

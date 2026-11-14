@@ -800,6 +800,9 @@ export const en: Dictionary = {
       no: "no",
     },
     testBadge: "Draft test",
+    sourcesHeading: "Sources",
+    retrievalCount: "Knowledge retrieval: {n} relevant excerpts found.",
+    retrievalUnavailable: "Knowledge retrieval: knowledge is not available on this environment.",
     statuses: {
       queued: "Queued",
       running: "Running",
