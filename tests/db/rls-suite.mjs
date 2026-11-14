@@ -1786,6 +1786,219 @@ try {
       "VALIDATION_FAILED",
     );
 
+    /* -- 0019: settling twice must not count twice, nor overwrite the outcome -- */
+    await expectAllowed(g, "a second settle_run on a finished run changes nothing", async () => {
+      await p.query("SET ROLE service_role");
+      try {
+        const before = (
+          await p.query(`select spent_usd_micros from public.usage_periods where org_id=$1`, [orgR])
+        ).rows[0];
+        await p.query(
+          `select public.settle_run($1,'failed'::public.run_status,999,null,'LATE_DUPLICATE')`,
+          [settleRun],
+        );
+        const after = (
+          await p.query(`select spent_usd_micros from public.usage_periods where org_id=$1`, [orgR])
+        ).rows[0];
+        const run = (
+          await p.query(
+            `select status, error_code, spent_usd_micros from public.runs where id=$1`,
+            [settleRun],
+          )
+        ).rows[0];
+        if (Number(after.spent_usd_micros) !== Number(before.spent_usd_micros))
+          throw new Error("the period was charged twice");
+        if (run.status !== "succeeded" || run.error_code !== null)
+          throw new Error(`outcome overwritten: ${run.status} ${run.error_code}`);
+        if (Number(run.spent_usd_micros) !== 750000) throw new Error("run cost overwritten");
+      } finally {
+        await p.query("RESET ROLE").catch(() => {});
+      }
+    });
+    {
+      const lateAgent = await publishedAgent("Late worker");
+      await setCap(50_000_000);
+      let lateRun;
+      await act(t, memberR, async () => {
+        lateRun = (
+          await t.query(`select public.start_run($1,'{}'::jsonb,null) as out`, [lateAgent])
+        ).rows[0].out.run_id;
+        await t.query(`select public.cancel_run($1)`, [lateRun]);
+      });
+      await expectAllowed(
+        g,
+        "a worker settling a cancelled run records the billed cost and keeps it cancelled",
+        async () => {
+          await p.query("SET ROLE service_role");
+          try {
+            const before = (
+              await p.query(`select spent_usd_micros from public.usage_periods where org_id=$1`, [
+                orgR,
+              ])
+            ).rows[0];
+            await p.query(
+              `select public.settle_run($1,'succeeded'::public.run_status,400000,'{"output":"x"}'::jsonb,null)`,
+              [lateRun],
+            );
+            const after = (
+              await p.query(`select spent_usd_micros from public.usage_periods where org_id=$1`, [
+                orgR,
+              ])
+            ).rows[0];
+            const run = (
+              await p.query(
+                `select status, spent_usd_micros, result_json from public.runs where id=$1`,
+                [lateRun],
+              )
+            ).rows[0];
+            if (run.status !== "cancelled") throw new Error(`status became ${run.status}`);
+            if (run.result_json !== null) throw new Error("a cancelled run gained a result");
+            if (Number(run.spent_usd_micros) !== 400000) throw new Error("billed cost dropped");
+            if (Number(after.spent_usd_micros) - Number(before.spent_usd_micros) !== 400000)
+              throw new Error("billed cost missing from the period");
+          } finally {
+            await p.query("RESET ROLE").catch(() => {});
+          }
+        },
+      );
+    }
+
+    /* -- the claim: only one worker can move a queued run to running -- */
+    {
+      const claimAgent = await publishedAgent("Claimed once");
+      await setCap(50_000_000);
+      let claimRun;
+      await act(t, memberR, async () => {
+        claimRun = (
+          await t.query(`select public.start_run($1,'{}'::jsonb,null) as out`, [claimAgent])
+        ).rows[0].out.run_id;
+      });
+      await expectAllowed(
+        g,
+        "two concurrent claims of one queued run: exactly one wins",
+        async () => {
+          const claim = async () => {
+            const c = asProbe();
+            await c.connect();
+            try {
+              await c.query("SET ROLE service_role");
+              const r = await c.query(
+                `update public.runs set status='running', started_at=now()
+               where id=$1 and status='queued' returning id`,
+                [claimRun],
+              );
+              return r.rowCount;
+            } finally {
+              await c.end();
+            }
+          };
+          const counts = await Promise.all([claim(), claim()]);
+          if (counts.reduce((a, b) => a + b, 0) !== 1)
+            throw new Error(`claims won: ${JSON.stringify(counts)}`);
+        },
+      );
+    }
+
+    /* -- the full execution lifecycle, statement for statement as executor.ts -- */
+    {
+      const lifeAgent = await publishedAgent("Lifecycle");
+      await setCap(50_000_000);
+      let lifeRun;
+      await act(t, memberR, async () => {
+        lifeRun = (
+          await t.query(`select public.start_run($1,'{"prompt":"hi"}'::jsonb,null) as out`, [
+            lifeAgent,
+          ])
+        ).rows[0].out.run_id;
+      });
+      await expectAllowed(
+        g,
+        "lifecycle: claim -> trace -> usage -> settle ends succeeded with the budget released",
+        async () => {
+          await p.query("SET ROLE service_role");
+          try {
+            const run = (await p.query(`select org_id from public.runs where id=$1`, [lifeRun]))
+              .rows[0];
+            const claim = await p.query(
+              `update public.runs set status='running', started_at=now()
+               where id=$1 and status='queued' returning id`,
+              [lifeRun],
+            );
+            if (claim.rowCount !== 1) throw new Error("claim failed");
+            const step = (
+              await p.query(
+                `insert into public.run_steps
+                   (org_id, run_id, step_index, kind, status, provider, model, started_at)
+                 values ($1,$2,0,'model_call','running','mock','mock:deterministic',now())
+                 returning id`,
+                [run.org_id, lifeRun],
+              )
+            ).rows[0].id;
+            await p.query(
+              `insert into public.usage_events
+                 (org_id, run_id, step_id, provider, model, units_json, cost_usd_micros,
+                  estimate_source, rate_card_version)
+               values ($1,$2,$3,'mock','mock:deterministic',
+                       '{"inputTokens":120,"outputTokens":80}'::jsonb,36,'estimated','v')`,
+              [run.org_id, lifeRun, step],
+            );
+            await p.query(
+              `update public.run_steps set status='succeeded', usage_usd_micros=36,
+                 summary_json='{"inputTokens":120,"outputTokens":80,"outputChars":10}'::jsonb,
+                 ended_at=now() where id=$1`,
+              [step],
+            );
+            await p.query(
+              `select public.settle_run($1,'succeeded'::public.run_status,36,
+                 '{"output":"[simulation]"}'::jsonb,null)`,
+              [lifeRun],
+            );
+            const done = (
+              await p.query(
+                `select r.status, r.spent_usd_micros, r.ended_at is not null as ended,
+                        (select status from public.usage_reservations where run_id=r.id) as res
+                 from public.runs r where r.id=$1`,
+                [lifeRun],
+              )
+            ).rows[0];
+            if (done.status !== "succeeded") throw new Error(`status ${done.status}`);
+            if (Number(done.spent_usd_micros) !== 36) throw new Error("cost not recorded");
+            if (!done.ended) throw new Error("no end time");
+            if (done.res !== "settled") throw new Error(`reservation ${done.res}`);
+          } finally {
+            await p.query("RESET ROLE").catch(() => {});
+          }
+        },
+      );
+      await expectRows(
+        g,
+        "lifecycle: the member who ran it sees the output and the trace",
+        () =>
+          act(t, memberR, () =>
+            t.query(
+              `select r.result_json->>'output' as out, s.summary_json->>'inputTokens' as tin
+               from public.runs r join public.run_steps s on s.run_id = r.id where r.id=$1`,
+              [lifeRun],
+            ),
+          ),
+        1,
+      );
+      await expectRows(
+        g,
+        "lifecycle: another organisation sees neither the run nor its trace",
+        () =>
+          act(t, strangerR, () =>
+            t.query(
+              `select id from public.runs where id=$1
+               union all select id from public.run_steps where run_id=$1
+               union all select id from public.usage_events where run_id=$1`,
+              [lifeRun],
+            ),
+          ),
+        0,
+      );
+    }
+
     /* -- cancellation gives the budget back -- */
     {
       const cancelAgent = await publishedAgent("Cancellable");
@@ -1930,7 +2143,12 @@ try {
       g,
       "an owner DOES see per-call spend",
       () =>
-        act(t, ownerR, () => t.query(`select id from public.usage_events where org_id=$1`, [orgR])),
+        act(t, ownerR, () =>
+          t.query(`select id from public.usage_events where org_id=$1 and run_id=$2`, [
+            orgR,
+            runId,
+          ]),
+        ),
       1,
     );
     await expectRows(

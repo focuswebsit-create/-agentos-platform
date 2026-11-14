@@ -671,6 +671,7 @@ export const en: Dictionary = {
       modelPlaceholder: "Choose a model",
       noProviderNotice:
         "No model provider is configured on this deployment (no server-side API key). You can configure and publish an agent, but not run one.",
+      providerLiveDisabled: "key present, billed runs off",
       providerComingSoon: "coming soon",
       providerSimulation: "simulation — no real model",
       selectedProviderNotConfigured:
@@ -733,7 +734,62 @@ export const en: Dictionary = {
     usageReserved: "Reserved",
     usageCap: "Cap",
     simulatedNotice:
-      "These runs went to a deterministic test provider, not a real model. The result is not a model answer.",
+      "This run used the simulation provider, not a real model. The output is not a model answer and incurred no real cost.",
+    live: {
+      waiting: "The run is queued. Starting it…",
+      kicking: "The run did not start on its own — starting it now.",
+      running: "The model is working on the answer. This page updates automatically.",
+      stuck:
+        "The run has still not started. You can cancel it — its reserved budget is returned — and check the runtime status below.",
+    },
+    usage: {
+      heading: "Usage and cost",
+      tokensIn: "Input tokens",
+      tokensOut: "Output tokens",
+      cost: "Estimated cost",
+      estimateNote:
+        "Cost is computed from the provider's price list; the provider reports no per-request cost.",
+      truncated: "The answer was cut off at the length limit the budget allows.",
+    },
+    errors: {
+      PROVIDER_NOT_CONFIGURED:
+        "The published version's model provider is not configured on this deployment.",
+      RUNTIME_NOT_CONFIGURED: "The execution environment is not configured on the server.",
+      RUNTIME_DB_UNAVAILABLE:
+        "The runtime could not reach the database (the server key may be wrong).",
+      AGENT_CONFIG_INVALID:
+        "The published version's configuration is invalid. Publish a new version.",
+      RUN_NOT_STARTED:
+        "The run did not start in time and was closed automatically. Nothing was charged.",
+      RUN_TIMEOUT:
+        "The run did not finish in time and was stopped. Only cost already recorded was charged.",
+      RUN_ABANDONED: "The run was abandoned and closed automatically.",
+      BUDGET_TOO_LOW:
+        "The per-run spend cap is too low for an answer. Raise it in the agent's settings.",
+      PROVIDER_AUTH: "The provider rejected the server's API key.",
+      PROVIDER_BAD_REQUEST: "The provider rejected the request as invalid.",
+      PROVIDER_RATE_LIMITED: "The provider rate-limited the request. Try again in a few minutes.",
+      PROVIDER_UNAVAILABLE: "The provider was unavailable. Try again.",
+      PROVIDER_TIMEOUT: "The provider did not answer in time.",
+      PROVIDER_REFUSED: "The model declined the request.",
+      PROVIDER_OUTPUT_LIMIT:
+        "The length limit was spent before any answer was written. Raise the spend cap.",
+      PROVIDER_CANCELLED: "The run was cancelled.",
+      RUNTIME_ERROR: "Internal runtime error. The reserved budget was returned.",
+      SETTLEMENT_FAILED: "The run finished but recording its cost failed.",
+    },
+    health: {
+      heading: "Runtime status",
+      intro: "A live server-side check. No value is shown — only whether each part is ready.",
+      runtimeKeyPresent: "Database server key (SUPABASE_SECRET_KEY) present",
+      runtimeKeyAccepted: "The database accepts the server key",
+      simulationEnabled: "Simulation provider enabled (AGENTOS_ENABLE_MOCK_PROVIDER=1)",
+      anthropicKeyPresent: "Anthropic key present (ANTHROPIC_API_KEY)",
+      liveAiEnabled: "Billed real-model runs approved (AGENTOS_ENABLE_LIVE_AI=1)",
+      cronSecretValid: "Scheduled-task secret valid (AGENTOS_CRON_SECRET, at least 24 characters)",
+      yes: "yes",
+      no: "no",
+    },
     statuses: {
       queued: "Queued",
       running: "Running",

@@ -66,6 +66,16 @@ import {
  * does not support it, so it is not sent there.
  */
 
+/** The operator's explicit switch for billed model calls. Not a secret. */
+export function isLiveAiEnabled(): boolean {
+  return process.env.AGENTOS_ENABLE_LIVE_AI === "1";
+}
+
+/** Whether a key is present, as a boolean - for readiness reports only. */
+export function anthropicKeyPresent(): boolean {
+  return hasAnthropicApiKey();
+}
+
 /** Models offered in Agent Studio. Anything else is refused before sending. */
 export const ANTHROPIC_MODELS = [
   "claude-opus-5-5",
@@ -233,8 +243,15 @@ export class AnthropicProvider implements ModelProvider {
     this.options = options;
   }
 
+  /**
+   * Configured means BOTH a server-side key AND an explicit operator switch.
+   * A key alone is not consent to spend: CLAUDE.md rule 3 makes live provider
+   * activation an owner decision, so a deployment that merely has the key in
+   * its environment does not make billed calls until AGENTOS_ENABLE_LIVE_AI=1.
+   */
   isConfigured(): boolean {
-    return this.options.configured ? this.options.configured() : hasAnthropicApiKey();
+    if (this.options.configured) return this.options.configured();
+    return hasAnthropicApiKey() && isLiveAiEnabled();
   }
 
   async complete(request: ProviderRequest): Promise<ProviderResult> {

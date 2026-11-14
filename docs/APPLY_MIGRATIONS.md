@@ -139,6 +139,29 @@ and `SUPABASE_SECRET_KEY`, which the executor uses to record the run. See
 
 ---
 
+## Incremental: 0019 on a database that already has 0001–0018
+
+The Development project already has 0001–0018 (verified read-only on
+2026-11-14: every runtime table and RPC exists, and anonymous access is refused,
+so 0017 is live). **Do not run the full bundle there** — it refuses, by design,
+on an existing install.
+
+Apply only `supabase/migrations/0019_settle_run_idempotent.sql`:
+
+1. Step 0 above — confirm the project.
+2. **SQL Editor → New query →** paste the file → **Run**.
+
+It replaces one function (`settle_run`) with the same signature and grants;
+no table, row or permission changes. What it fixes: a second settlement of the
+same run — a retry, or recovery racing a late worker — no longer overwrites the
+outcome or counts the cost twice; a worker finishing a run the user cancelled
+records the billed cost and leaves it cancelled. Verified locally:
+`tests/db/rls-suite.mjs` group 12 (both checks fail without it).
+
+Runs work without 0019; it closes a rare double-count race.
+
+---
+
 ## If something goes wrong
 
 | Symptom | Meaning |

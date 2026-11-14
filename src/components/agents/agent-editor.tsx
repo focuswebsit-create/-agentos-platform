@@ -245,7 +245,7 @@ export function AgentEditor({
                         ? `${p.label} — ${e.providerSimulation}`
                         : p.configured
                           ? p.label
-                          : `${p.label} — ${e.providerNotConfigured}`}
+                          : `${p.label} — ${p.liveCallsDisabled ? e.providerLiveDisabled : e.providerNotConfigured}`}
                   </option>
                 ))}
               </NativeSelect>

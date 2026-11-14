@@ -23,6 +23,7 @@ const m = vi.hoisted(() => ({
     async () => ({ activeProvider: "anthropic" }) as { activeProvider: string | null },
   ),
   executeRun: vi.fn(async () => ({ ok: true, costUsdMicros: 1 })),
+  recoverStaleRuns: vi.fn(async () => ({ recovered: 0 })),
 }));
 
 vi.mock("@/modules/api/guard", () => ({
@@ -36,6 +37,7 @@ vi.mock("@/modules/supabase/server", () => ({
   createSupabaseServerClient: async () => ({ rpc: m.rpc }),
 }));
 vi.mock("@/modules/runtime/readiness", () => ({ isRuntimeConfigured: m.isRuntimeConfigured }));
+vi.mock("@/modules/runtime/recovery", () => ({ recoverStaleRuns: m.recoverStaleRuns }));
 vi.mock("@/modules/runtime/executor", () => ({ executeRun: m.executeRun }));
 vi.mock("@/modules/agents/data", () => ({ getAgent: m.getAgent }));
 vi.mock("@/modules/agent-engine/registry", () => ({
@@ -85,6 +87,21 @@ describe("run dispatch readiness", () => {
     expect((await res.json()).code).toBe("PROVIDER_NOT_CONFIGURED");
     expect(m.isProviderConfigured).toHaveBeenCalledWith("anthropic");
     expect(m.rpc).not.toHaveBeenCalled();
+  });
+
+  it("recovers this organisation's stale runs BEFORE reserving, so an abandoned run cannot block the cap", async () => {
+    const order: string[] = [];
+    m.recoverStaleRuns.mockImplementationOnce(async () => {
+      order.push("recover");
+      return { recovered: 1 };
+    });
+    m.rpc.mockImplementationOnce(async () => {
+      order.push("start_run");
+      return { data: { run_id: "run-1", reused: false }, error: null };
+    });
+    await post();
+    expect(order).toEqual(["recover", "start_run"]);
+    expect(m.recoverStaleRuns).toHaveBeenCalledWith(ORG);
   });
 
   it("leaves an unpublished agent to start_run, which answers authoritatively under RLS", async () => {

@@ -1,7 +1,7 @@
 import "server-only";
 import type { ModelProvider } from "./provider";
 import { MockProvider } from "./providers/mock";
-import { AnthropicProvider } from "./providers/anthropic";
+import { AnthropicProvider, anthropicKeyPresent, isLiveAiEnabled } from "./providers/anthropic";
 import { PROVIDER_CATALOG, type ProviderOption } from "./model-registry";
 
 /**
@@ -11,7 +11,8 @@ import { PROVIDER_CATALOG, type ProviderOption } from "./model-registry";
  * render. That one says what exists; this one says what will answer.
  *
  * - **Anthropic** is always registered, and is configured exactly when
- *   `ANTHROPIC_API_KEY` is present server-side. Without it, the executor
+ *   `ANTHROPIC_API_KEY` is present server-side AND `AGENTOS_ENABLE_LIVE_AI=1`
+ *   (the owner's explicit consent to billed calls). Without it, the executor
  *   refuses to dispatch (`PROVIDER_NOT_CONFIGURED`) and Studio says so.
  * - **The mock** is registered only when `AGENTOS_ENABLE_MOCK_PROVIDER=1`.
  *   Production does not set it, so a deployment cannot quietly serve simulated
@@ -60,8 +61,14 @@ export function isProviderConfigured(id: string): boolean {
  */
 export function studioProviderOptions(): ProviderOption[] {
   const ready = new Set(configuredProviderIds());
-  return PROVIDER_CATALOG.filter((p) => !p.simulation || isMockProviderEnabled()).map((p) => ({
-    ...p,
-    configured: p.implemented && ready.has(p.id),
-  }));
+  return PROVIDER_CATALOG.filter((p) => !p.simulation || isMockProviderEnabled()).map((p) => {
+    const configured = p.implemented && ready.has(p.id);
+    return {
+      ...p,
+      configured,
+      ...(p.id === "anthropic" && !configured && anthropicKeyPresent() && !isLiveAiEnabled()
+        ? { liveCallsDisabled: true }
+        : {}),
+    };
+  });
 }

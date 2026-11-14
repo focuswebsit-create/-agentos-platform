@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { can } from "@/modules/tenancy";
 import { resolveOrgContext } from "@/modules/tenancy/context";
 import { listRuns, getUsageSummary, type RunStatus } from "@/modules/runtime/data";
-import { hasAnyConfiguredProvider } from "@/modules/agent-engine/registry";
+import { recoverStaleRuns } from "@/modules/runtime/recovery";
 import { getDictionary } from "@/i18n";
 
 const t = getDictionary();
@@ -32,6 +32,10 @@ export default async function RunsPage() {
   if (resolution.status === "no_organization") redirect("/onboarding");
 
   const { context } = resolution;
+  // Before reading: a run abandoned by a cut-short worker is closed and its
+  // budget returned, so the list and the usage figures below are current.
+  // Vercel Cron does not run on preview deployments; this does.
+  await recoverStaleRuns(context.orgId);
   const [runs, usage] = await Promise.all([
     listRuns(context.orgId),
     can(context.role, "usage.read") ? getUsageSummary(context.orgId) : Promise.resolve(null),
@@ -40,13 +44,6 @@ export default async function RunsPage() {
   return (
     <div className="space-y-6">
       <PageHeader title={t.runs.title} subtitle={t.runs.subtitle} />
-
-      {/* Stated wherever a result can be seen, not only where it is produced. */}
-      {hasAnyConfiguredProvider() && runs.length > 0 ? (
-        <p className="rounded-lg border border-border bg-muted/50 px-3.5 py-3 text-sm text-muted-foreground">
-          {t.runs.simulatedNotice}
-        </p>
-      ) : null}
 
       {usage ? (
         <section className="rounded-2xl border bg-card p-5 shadow-sm">

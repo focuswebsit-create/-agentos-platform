@@ -5,9 +5,13 @@ import { createSupabaseServerClient } from "@/modules/supabase/server";
 import { guardApi } from "@/modules/api/guard";
 import { executeRun } from "@/modules/runtime/executor";
 import { isRuntimeConfigured } from "@/modules/runtime/readiness";
+import { recoverStaleRuns } from "@/modules/runtime/recovery";
 import { getAgent } from "@/modules/agents/data";
 import { isProviderConfigured } from "@/modules/agent-engine/registry";
 import { mapDatabaseError, okJson, problem } from "@/modules/api/respond";
+
+/** after() runs inside this invocation, so it inherits this budget. */
+export const maxDuration = 300;
 
 const BodySchema = z.object({
   orgId: z.uuid(),
@@ -71,6 +75,10 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/age
   // An agent that is missing or unpublished falls through: start_run gives the
   // authoritative answer (not found / no version), under RLS.
 
+  // Give back budget held by runs that will never finish, BEFORE the cap is
+  // checked - otherwise an abandoned run could make this one look over-limit.
+  await recoverStaleRuns(guard.context.orgId);
+
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc("start_run", {
     p_agent_id: id,
@@ -89,8 +97,11 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/age
   // and executing it again would charge the tenant twice for one dispatch —
   // the exact thing the idempotency key exists to prevent.
   if (!dispatch.reused) {
+    // Best effort. If this is cut short, the run page's call to
+    // /api/runs/:id/execute picks the run up; the claim inside executeRun
+    // guarantees the two can never both execute it.
     after(async () => {
-      await executeRun(dispatch.run_id);
+      await executeRun(dispatch.run_id, { expectedOrgId: guard.context.orgId });
     });
   }
 

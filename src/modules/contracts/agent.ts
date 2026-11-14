@@ -40,6 +40,18 @@ export const AgentConfigSchema = z.object({
 });
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
 
+/**
+ * What a run validates a PUBLISHED version against.
+ *
+ * `name` lives on the agent row, not in the stored config: `publish_agent_version`
+ * freezes the draft's `config_json`, and the draft schema has no name. The
+ * executor used to parse versions with `AgentConfigSchema`, which requires one,
+ * so every run of every agent published through Studio failed with
+ * AGENT_CONFIG_INVALID. Same strict rules, minus the field that is never stored.
+ */
+export const RuntimeAgentConfigSchema = AgentConfigSchema.omit({ name: true });
+export type RuntimeAgentConfig = z.infer<typeof RuntimeAgentConfigSchema>;
+
 export const AgentSchema = z.object({
   id: IdSchema,
   orgId: IdSchema,

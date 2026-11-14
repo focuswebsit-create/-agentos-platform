@@ -33,6 +33,11 @@ export interface CatalogProvider {
 export interface ProviderOption extends CatalogProvider {
   /** Decided on the server, from keys and flags the browser never sees. */
   configured: boolean;
+  /**
+   * Why a real provider is not configured, when the server can say without
+   * revealing anything: the key is present but billed calls are switched off.
+   */
+  liveCallsDisabled?: boolean;
 }
 
 export const PROVIDER_CATALOG: readonly CatalogProvider[] = [

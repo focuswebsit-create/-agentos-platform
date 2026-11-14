@@ -41,6 +41,15 @@ export type RunStep = {
 export type RunDetail = RunSummary & {
   /** The model's answer, or null while it is still running or if it failed. */
   output: string | null;
+  /** The answer stopped at the output cap. */
+  truncated: boolean;
+  /**
+   * The provider of the PINNED version this run executes - what it actually
+   * used, which is what decides whether the simulation notice is shown. Not
+   * the deployment's configuration, and not the agent's current draft.
+   */
+  versionProvider: string | null;
+  startedAt: string | null;
   steps: RunStep[];
 };
 
@@ -81,14 +90,30 @@ export async function getRun(orgId: string, runId: string): Promise<RunDetail | 
   const { data: runData, error } = await supabase
     .from("runs")
     .select(
-      "id, agent_id, status, error_code, created_at, ended_at, result_json, agents!inner(name)",
+      "id, agent_id, agent_version_id, status, error_code, created_at, started_at, ended_at, result_json, agents!inner(name)",
     )
     .eq("org_id", orgId)
     .eq("id", runId)
     .maybeSingle();
 
   if (error || !runData) return null;
-  const row = runData as unknown as RunRow & { result_json: { output?: unknown } | null };
+  const row = runData as unknown as RunRow & {
+    agent_version_id: string;
+    started_at: string | null;
+    result_json: { output?: unknown; truncated?: unknown } | null;
+  };
+
+  const { data: versionData } = await supabase
+    .from("agent_versions")
+    .select("config_json")
+    .eq("org_id", orgId)
+    .eq("id", row.agent_version_id)
+    .maybeSingle();
+  const versionProvider =
+    typeof (versionData as { config_json?: { provider?: unknown } } | null)?.config_json
+      ?.provider === "string"
+      ? ((versionData as { config_json: { provider: string } }).config_json.provider as string)
+      : null;
 
   const { data: stepData } = await supabase
     .from("run_steps")
@@ -121,6 +146,9 @@ export async function getRun(orgId: string, runId: string): Promise<RunDetail | 
     createdAt: row.created_at,
     endedAt: row.ended_at,
     output: typeof row.result_json?.output === "string" ? row.result_json.output : null,
+    truncated: row.result_json?.truncated === true,
+    versionProvider,
+    startedAt: row.started_at,
     steps: steps.map((s) => ({
       id: s.id,
       stepIndex: s.step_index,

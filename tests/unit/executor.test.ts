@@ -13,17 +13,35 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
  * runs its real control flow and only the I/O is substituted.
  */
 
-type Call = { table: string; op: string; payload?: unknown };
+type Call = { table: string; op: string; payload?: unknown; filters: Record<string, unknown> };
 
-function fakeDb(options: { run?: Record<string, unknown> | null; config?: unknown }) {
+function fakeDb(options: {
+  run?: Record<string, unknown> | null;
+  config?: unknown;
+  /** Rows the claim update returns: 1 = won, 0 = someone else claimed it. */
+  claimRows?: number;
+  /** The first read of the run fails, as it does with a rejected key. */
+  readError?: boolean;
+  /** settle_run fails this many times before succeeding. */
+  settleFailures?: number;
+}) {
+  let settleFailuresLeft = options.settleFailures ?? 0;
   const calls: Call[] = [];
   const rpc: Array<{ name: string; args: Record<string, unknown> }> = [];
 
   const builder = (table: string) => {
-    const state: { op: string; payload?: unknown } = { op: "select" };
+    const state: { op: string; payload?: unknown; filters: Record<string, unknown> } = {
+      op: "select",
+      filters: {},
+    };
     const result = () => {
       if (table === "runs" && state.op === "select") {
+        if (options.readError) return { data: null, error: { message: "Invalid API key" } };
         return { data: options.run ?? null, error: null };
+      }
+      if (table === "runs" && state.op === "update") {
+        const n = options.claimRows ?? 1;
+        return { data: Array.from({ length: n }, () => ({ id: "run-1" })), error: null };
       }
       if (table === "agent_versions" && state.op === "select") {
         return { data: { config_json: options.config }, error: null };
@@ -35,17 +53,20 @@ function fakeDb(options: { run?: Record<string, unknown> | null; config?: unknow
     };
     const chain: Record<string, unknown> = {
       select: () => chain,
-      eq: () => chain,
+      eq: (col: string, value: unknown) => {
+        state.filters[col] = value;
+        return chain;
+      },
       maybeSingle: async () => result(),
       single: async () => result(),
       insert: (payload: unknown) => {
         state.op = "insert";
-        calls.push({ table, op: "insert", payload });
+        calls.push({ table, op: "insert", payload, filters: state.filters });
         return chain;
       },
       update: (payload: unknown) => {
         state.op = "update";
-        calls.push({ table, op: "update", payload });
+        calls.push({ table, op: "update", payload, filters: state.filters });
         return chain;
       },
       then: (resolve: (v: unknown) => unknown) => Promise.resolve(result()).then(resolve),
@@ -60,6 +81,10 @@ function fakeDb(options: { run?: Record<string, unknown> | null; config?: unknow
       from: (table: string) => builder(table),
       rpc: async (name: string, args: Record<string, unknown>) => {
         rpc.push({ name, args });
+        if (name === "settle_run" && settleFailuresLeft > 0) {
+          settleFailuresLeft--;
+          return { data: null, error: { message: "transient" } };
+        }
         return { data: null, error: null };
       },
     },
@@ -74,7 +99,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/modules/service-role/client", () => mocks);
 
 const VALID_CONFIG = {
-  name: "Support",
   role: "נציג תמיכה",
   instructions: "ענה בעברית, בקצרה, ואל תמציא מדיניות.",
   provider: "mock",
@@ -181,6 +205,69 @@ describe("executeRun", () => {
     expect(outcome.ok).toBe(false);
     expect(settles).toHaveLength(1);
     expect(settles[0]?.args.p_error_code).toBe("PROVIDER_NOT_CONFIGURED");
+  });
+
+  it("runs a published version exactly as stored - without a name field", async () => {
+    // Regression: the executor validated versions with the publish schema,
+    // which requires `name`, but published config_json never contains one. Every
+    // run of every agent published through Studio failed AGENT_CONFIG_INVALID.
+    expect(VALID_CONFIG).not.toHaveProperty("name");
+    const { outcome, settles } = await run({ run: QUEUED_RUN, config: VALID_CONFIG });
+    expect(outcome.ok).toBe(true);
+    expect(settles[0]?.args.p_status).toBe("succeeded");
+  });
+
+  it("claims the run atomically: only a queued run is moved to running", async () => {
+    const { db } = await run({ run: QUEUED_RUN, config: VALID_CONFIG });
+    const claim = db.calls.find((c) => c.table === "runs" && c.op === "update");
+    expect(claim?.payload).toMatchObject({ status: "running" });
+    // The condition IS the claim. Without it two workers both "win".
+    expect(claim?.filters).toMatchObject({ id: "run-1", status: "queued" });
+  });
+
+  it("does nothing - no provider call, no settlement - when another worker won the claim", async () => {
+    const { MockProvider } = await import("@/modules/agent-engine/providers/mock");
+    const spy = vi.spyOn(MockProvider.prototype, "complete");
+    const { outcome, settles } = await run({ run: QUEUED_RUN, config: VALID_CONFIG, claimRows: 0 });
+    expect(outcome).toMatchObject({ ok: false, code: "RUN_NOT_QUEUED" });
+    expect(spy).not.toHaveBeenCalled();
+    expect(settles).toHaveLength(0);
+  });
+
+  it("reports RUNTIME_DB_UNAVAILABLE, and writes nothing, when the database rejects the key", async () => {
+    const { outcome, settles, db } = await run({
+      run: QUEUED_RUN,
+      config: VALID_CONFIG,
+      readError: true,
+    });
+    expect(outcome).toMatchObject({ ok: false, code: "RUNTIME_DB_UNAVAILABLE" });
+    expect(settles).toHaveLength(0);
+    expect(db.calls).toHaveLength(0);
+  });
+
+  it("refuses a run that belongs to a different organisation than the caller's", async () => {
+    const db = fakeDb({ run: QUEUED_RUN, config: VALID_CONFIG });
+    mocks.createServiceRoleClient.mockReturnValue(db.client);
+    const { executeRun } = await import("@/modules/runtime/executor");
+    const outcome = await executeRun("run-1", { expectedOrgId: "org-OTHER" });
+    expect(outcome).toMatchObject({ ok: false, code: "RUN_NOT_FOUND" });
+    expect(db.calls).toHaveLength(0);
+    expect(db.rpc).toHaveLength(0);
+  });
+
+  it("retries a failed settlement once, and succeeds", async () => {
+    const { outcome, settles } = await run({
+      run: QUEUED_RUN,
+      config: VALID_CONFIG,
+      settleFailures: 1,
+    });
+    expect(outcome.ok).toBe(true);
+    expect(settles).toHaveLength(2);
+  });
+
+  it("reports SETTLEMENT_FAILED rather than success when settlement keeps failing", async () => {
+    const { outcome } = await run({ run: QUEUED_RUN, config: VALID_CONFIG, settleFailures: 5 });
+    expect(outcome).toMatchObject({ ok: false, code: "SETTLEMENT_FAILED" });
   });
 
   it("does NOT settle a run that is no longer queued", async () => {

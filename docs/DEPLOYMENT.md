@@ -16,10 +16,30 @@ Nothing here applies a migration or changes a cloud setting. Every item marked
 | `SUPABASE_SECRET_KEY` | Super Admin, the run executor, the reservation sweeper | `/admin/*` answers 404 even to a real administrator. **Runs are refused before dispatch** with `RUNTIME_NOT_CONFIGURED` (503) and nothing is reserved; the playground says why. Customer screens are otherwise unaffected. |
 | `AGENTOS_CRON_SECRET` | the reservation sweeper | `/api/internal/sweep-reservations` answers 404 to everyone, so nothing reclaims budget from crashed runs. **Required in any deployment that executes runs.** At least 24 characters; shorter is treated as absent. |
 | `ANTHROPIC_API_KEY` | running agents on Claude (Opus 5.5, Sonnet 5.5, Haiku 5.5) | Studio lists Anthropic as "לא מוגדר"; publishing still works; a run is refused before dispatch with `PROVIDER_NOT_CONFIGURED` (503) and nothing is reserved. **Server-only: never `NEXT_PUBLIC_`.** If a `NEXT_PUBLIC_ANTHROPIC_API_KEY` exists the provider refuses to start, because the key has then already leaked into a browser bundle — rotate it. **Setting it means real charges on the Anthropic account that owns the key** — an owner decision. |
+| `AGENTOS_ENABLE_LIVE_AI` | billed Claude runs | Even with `ANTHROPIC_API_KEY` set, Anthropic is **not** configured: Studio shows "מפתח קיים, הרצות בתשלום כבויות" and runs are refused before dispatch. Set to `1` only when the owner approves paid runs on that deployment. |
 | `AGENTOS_ENABLE_MOCK_PROVIDER` | the simulation provider, for testing save → publish → run without a real model | The simulation is not offered in Studio and cannot be published on. Set it to `1` on previews only, **never production**: every simulated answer is labelled "[סימולציה — לא תשובת מודל]", but a paying customer should never see one. |
 | `NEXT_PUBLIC_SITE_URL` | CSRF origin checks, email redirect links | Falls back to the request's own origin, which is correct on Vercel but means an email link may point at a preview URL rather than the canonical one. |
 
 `.env.example` is the authoritative list and carries the same notes.
+
+### Runs on a preview: what executes them, and what recovers them
+
+- **Execution** starts in the dispatch request's `after()`. If a serverless
+  invocation cuts that short, the run page notices the run is still queued after
+  ~4 s and calls `POST /api/runs/:id/execute`, which executes it inside a request
+  that stays open (`maxDuration = 300`). The executor claims a run with a
+  conditional update, so the two can never both execute it.
+- **Recovery.** `vercel.json` schedules the reservation sweeper, but **Vercel Cron
+  only invokes Production deployments — never Previews.** So stale runs are also
+  recovered lazily, per organisation, whenever someone in it dispatches a run,
+  opens the runs list or kicks a run: queued > 10 min → `RUN_NOT_STARTED` (no
+  charge); running > 7 min → `RUN_TIMEOUT` (charging only usage already recorded).
+- **Diagnosis.** On a run that is stuck or failed for an environment reason, owners
+  and admins see a *Runtime status* panel: six live booleans, including whether the
+  database actually **accepts** `SUPABASE_SECRET_KEY` (present-but-wrong is the
+  failure that leaves runs queued with no trace). No value is ever shown.
+- The function log records one line per outcome — `[runtime] run=<id> outcome=<CODE>` —
+  and never a key or a prompt.
 
 ### Verifying save → publish → run on a preview
 

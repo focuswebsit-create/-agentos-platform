@@ -21,6 +21,7 @@ const saved = {
   key: process.env.ANTHROPIC_API_KEY,
   publicKey: process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY,
   mock: process.env.AGENTOS_ENABLE_MOCK_PROVIDER,
+  live: process.env.AGENTOS_ENABLE_LIVE_AI,
 };
 const restore = (name: string, value: string | undefined) => {
   if (value === undefined) delete process.env[name];
@@ -34,11 +35,13 @@ beforeEach(() => {
   delete process.env.ANTHROPIC_API_KEY;
   delete process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY;
   delete process.env.AGENTOS_ENABLE_MOCK_PROVIDER;
+  delete process.env.AGENTOS_ENABLE_LIVE_AI;
 });
 afterEach(() => {
   restore("ANTHROPIC_API_KEY", saved.key);
   restore("NEXT_PUBLIC_ANTHROPIC_API_KEY", saved.publicKey);
   restore("AGENTOS_ENABLE_MOCK_PROVIDER", saved.mock);
+  restore("AGENTOS_ENABLE_LIVE_AI", saved.live);
 });
 
 describe("the catalog", () => {
@@ -79,14 +82,36 @@ describe("studioProviderOptions - what Studio is told on this deployment", () =>
     expect(hasConfiguredProvider(options)).toBe(false);
   });
 
-  it("with a server-side key: Anthropic is configured", async () => {
+  it("a key ALONE does not enable billed calls - it is reported as live-disabled", async () => {
+    // CLAUDE.md rule 3: live provider activation is an owner decision. A key
+    // sitting in a preview's environment is not that decision.
     process.env.ANTHROPIC_API_KEY = FAKE_KEY;
+    const { studioProviderOptions, isProviderConfigured } =
+      await import("@/modules/agent-engine/registry");
+    const anthropic = studioProviderOptions().find((p) => p.id === "anthropic");
+    expect(anthropic?.configured).toBe(false);
+    expect(anthropic?.liveCallsDisabled).toBe(true);
+    expect(isProviderConfigured("anthropic")).toBe(false);
+  });
+
+  it("key AND AGENTOS_ENABLE_LIVE_AI=1: Anthropic is configured", async () => {
+    process.env.ANTHROPIC_API_KEY = FAKE_KEY;
+    process.env.AGENTOS_ENABLE_LIVE_AI = "1";
     const { studioProviderOptions } = await import("@/modules/agent-engine/registry");
-    expect(studioProviderOptions().find((p) => p.id === "anthropic")?.configured).toBe(true);
+    const anthropic = studioProviderOptions().find((p) => p.id === "anthropic");
+    expect(anthropic?.configured).toBe(true);
+    expect(anthropic?.liveCallsDisabled).toBeUndefined();
+  });
+
+  it("the live switch without a key enables nothing", async () => {
+    process.env.AGENTOS_ENABLE_LIVE_AI = "1";
+    const { isProviderConfigured } = await import("@/modules/agent-engine/registry");
+    expect(isProviderConfigured("anthropic")).toBe(false);
   });
 
   it("refuses a key that has leaked to a NEXT_PUBLIC_ name, rather than using the server copy", async () => {
     process.env.ANTHROPIC_API_KEY = FAKE_KEY;
+    process.env.AGENTOS_ENABLE_LIVE_AI = "1";
     process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY = FAKE_KEY;
     const { studioProviderOptions } = await import("@/modules/agent-engine/registry");
     expect(studioProviderOptions().find((p) => p.id === "anthropic")?.configured).toBe(false);
