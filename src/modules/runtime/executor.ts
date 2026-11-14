@@ -50,6 +50,18 @@ type RunRow = {
 
 type VersionRow = { config_json: unknown };
 
+/**
+ * The system prompt a run sends: the agent's role, then its instructions.
+ *
+ * Both come from the published version and nothing else. The organisation id,
+ * the user's identity and every credential stay out of it; a prompt is the one
+ * place the model is guaranteed to see, and so the one place a secret must
+ * never be.
+ */
+export function buildSystemPrompt(role: string, instructions: string): string {
+  return `Your role: ${role.trim()}\n\n${instructions.trim()}`;
+}
+
 /** Narrow a provider failure to the short code stored in `runs.error_code`. */
 function failureCode(result: Extract<ProviderResult, { ok: false }>): string {
   return result.code;
@@ -145,7 +157,7 @@ export async function executeRun(runId: string): Promise<ExecuteOutcome> {
 
     const result = await provider.complete({
       model: config.model,
-      systemPrompt: config.instructions,
+      systemPrompt: buildSystemPrompt(config.role, config.instructions),
       userInput: prompt,
       maxSteps: config.maxSteps,
       maxSpendUsdMicros: Number(run.budget_usd_micros),
@@ -155,16 +167,32 @@ export async function executeRun(runId: string): Promise<ExecuteOutcome> {
     // billed and then failed still has to be paid for.
     const usage = result.usage;
     if (usage) {
-      const priced = result.reportedCostUsdMicros ?? priceTokens(config.model, usage);
+      // Provider-reported beats the provider's own estimate beats ours. The
+      // provider's estimate exists for requests that ran on more than one
+      // model (a server-side fallback), where only it knows each attempt's rate.
+      const priced =
+        result.reportedCostUsdMicros ??
+        result.estimatedCostUsdMicros ??
+        priceTokens(config.model, usage);
       cost = priced ?? 0;
+      const servedModel = (result.ok ? result.servedModel : undefined) ?? config.model;
 
       await db.from("usage_events").insert({
         org_id: run.org_id,
         run_id: runId,
         step_id: stepId,
         provider: providerId,
-        model: config.model,
-        units_json: { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens },
+        model: servedModel,
+        units_json: {
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          ...(usage.cacheReadInputTokens
+            ? { cacheReadInputTokens: usage.cacheReadInputTokens }
+            : {}),
+          ...(usage.cacheCreationInputTokens
+            ? { cacheCreationInputTokens: usage.cacheCreationInputTokens }
+            : {}),
+        },
         cost_usd_micros: cost,
         // Honest about which it is. A bill built from our own arithmetic and
         // presented as the provider's figure would be a fabricated number.
@@ -199,7 +227,14 @@ export async function executeRun(runId: string): Promise<ExecuteOutcome> {
       return { ok: false, code, costUsdMicros: cost };
     }
 
-    await finish("succeeded", cost, { output: result.output }, null);
+    await finish(
+      "succeeded",
+      cost,
+      // `truncated` tells the reader the answer stopped at the output cap; an
+      // answer cut mid-sentence and presented as complete would mislead.
+      { output: result.output, ...(result.truncated ? { truncated: true } : {}) },
+      null,
+    );
     return { ok: true, costUsdMicros: cost };
   } catch {
     // Our own bug, a dropped connection, anything. The run must still settle,

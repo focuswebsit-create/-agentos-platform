@@ -37,7 +37,7 @@ describe("rate card", () => {
   });
 
   it("is versioned, so a price change cannot rewrite last month's bill", () => {
-    expect(RATE_CARD_VERSION).toMatch(/^mock-/);
+    expect(RATE_CARD_VERSION).toMatch(/^anthropic-list-\d{4}-\d{2}-\d{2}$/);
   });
 });
 
@@ -106,35 +106,36 @@ describe("the deterministic provider", () => {
 });
 
 describe("provider registry", () => {
-  const original = process.env.AGENTOS_ENABLE_MOCK_PROVIDER;
+  const originalFlag = process.env.AGENTOS_ENABLE_MOCK_PROVIDER;
+  const originalKey = process.env.ANTHROPIC_API_KEY;
   beforeEach(() => {
     delete process.env.AGENTOS_ENABLE_MOCK_PROVIDER;
+    delete process.env.ANTHROPIC_API_KEY;
   });
   afterEach(() => {
-    if (original === undefined) delete process.env.AGENTOS_ENABLE_MOCK_PROVIDER;
-    else process.env.AGENTOS_ENABLE_MOCK_PROVIDER = original;
+    if (originalFlag === undefined) delete process.env.AGENTOS_ENABLE_MOCK_PROVIDER;
+    else process.env.AGENTOS_ENABLE_MOCK_PROVIDER = originalFlag;
+    if (originalKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = originalKey;
   });
 
-  it("offers nothing by default, so production cannot serve simulated answers", async () => {
+  it("offers nothing runnable by default, so production cannot serve simulated answers", async () => {
     const { hasAnyConfiguredProvider, getProvider } =
       await import("@/modules/agent-engine/registry");
     expect(hasAnyConfiguredProvider()).toBe(false);
     expect(getProvider("mock")).toBeNull();
   });
 
-  it("offers the mock only when the flag is set", async () => {
-    process.env.AGENTOS_ENABLE_MOCK_PROVIDER = "1";
-    const { hasAnyConfiguredProvider, getProvider } =
-      await import("@/modules/agent-engine/registry");
-    expect(hasAnyConfiguredProvider()).toBe(true);
-    expect(getProvider("mock")).not.toBeNull();
+  it("registers Anthropic, but as NOT configured without a server-side key", async () => {
+    const { getProvider, isProviderConfigured } = await import("@/modules/agent-engine/registry");
+    expect(getProvider("anthropic")).not.toBeNull();
+    expect(isProviderConfigured("anthropic")).toBe(false);
   });
 
-  it("registers no real provider", async () => {
+  it("offers the mock only when the flag is set", async () => {
     process.env.AGENTOS_ENABLE_MOCK_PROVIDER = "1";
-    const { configuredProviderIds } = await import("@/modules/agent-engine/registry");
-    // Connecting one is the owner's decision: it means charges on their
-    // account. Until then this list is the mock and nothing else.
+    const { configuredProviderIds, getProvider } = await import("@/modules/agent-engine/registry");
+    expect(getProvider("mock")).not.toBeNull();
     expect(configuredProviderIds()).toEqual(["mock"]);
   });
 });

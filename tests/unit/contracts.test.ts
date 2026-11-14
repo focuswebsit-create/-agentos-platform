@@ -160,7 +160,7 @@ describe("Error taxonomy", () => {
 
   it("has no duplicates and a known size, so a code is never added by accident", () => {
     expect(new Set(ERROR_CODES).size).toBe(ERROR_CODES.length);
-    expect(ERROR_CODES).toHaveLength(27);
+    expect(ERROR_CODES).toHaveLength(29);
   });
 
   it("validates the error envelope", () => {

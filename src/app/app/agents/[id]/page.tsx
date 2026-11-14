@@ -8,7 +8,8 @@ import { RunAgentForm } from "@/components/runs/run-agent-form";
 import { can } from "@/modules/tenancy";
 import { resolveOrgContext } from "@/modules/tenancy/context";
 import { getAgent } from "@/modules/agents/data";
-import { hasAnyConfiguredProvider } from "@/modules/agent-engine/registry";
+import { isProviderConfigured, studioProviderOptions } from "@/modules/agent-engine/registry";
+import { isRuntimeConfigured } from "@/modules/runtime/readiness";
 import { getDictionary } from "@/i18n";
 
 const t = getDictionary();
@@ -51,7 +52,14 @@ export default async function AgentDetailPage(props: PageProps<"/app/agents/[id]
           agentId={agent.id}
           canRun={can(context.role, "run.start") && agent.status !== "archived"}
           isPublished={agent.activeVersionId !== null}
-          providerConfigured={hasAnyConfiguredProvider()}
+          // The provider of the version that would actually run, not "any
+          // provider": an agent published on Anthropic cannot run because the
+          // simulation is enabled, and the form must not imply it can.
+          providerConfigured={
+            agent.activeProvider !== null && isProviderConfigured(agent.activeProvider)
+          }
+          simulation={agent.activeProvider === "mock"}
+          runtimeConfigured={isRuntimeConfigured()}
         />
       </section>
 
@@ -62,6 +70,7 @@ export default async function AgentDetailPage(props: PageProps<"/app/agents/[id]
         canEdit={can(context.role, "agent.update")}
         canPublish={can(context.role, "agent.publish")}
         canArchive={can(context.role, "agent.archive")}
+        providers={studioProviderOptions()}
       />
     </div>
   );

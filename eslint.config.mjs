@@ -77,24 +77,52 @@ const eslintConfig = defineConfig([
       ],
     },
   },
-  // No module may read the secret key straight out of process.env, bypassing the
+  // Ring 3 - model-provider API keys. Only the provider implementations may
+  // read them, so a route, a page or a component cannot reach a key even by
+  // accident. Callers that need to know whether a provider is ready ask the
+  // registry, which answers with a boolean.
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/config/provider-keys.server.ts", "src/modules/agent-engine/providers/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@/config/provider-keys.server",
+              message:
+                "Model-provider API keys. Only src/modules/agent-engine/providers/ reads them; " +
+                "ask the agent-engine registry whether a provider is configured instead.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  // No module may read a secret straight out of process.env, bypassing the
   // validated accessor and its browser/naming guards.
   {
     files: ["src/**/*.{ts,tsx}"],
-    // cron.server.ts is the second, and only other, reader of a server secret.
-    // It is a separate file precisely so that whoever needs the cron secret
-    // cannot also reach the Supabase one (see its header comment).
-    ignores: ["src/config/env.server.ts", "src/config/cron.server.ts"],
+    // cron.server.ts and provider-keys.server.ts are the only other readers of
+    // a server secret. Each is a separate file precisely so that whoever needs
+    // one secret cannot also reach another (see their header comments).
+    ignores: [
+      "src/config/env.server.ts",
+      "src/config/cron.server.ts",
+      "src/config/provider-keys.server.ts",
+    ],
     rules: {
       "no-restricted-syntax": [
         "error",
         {
           selector:
             "MemberExpression[object.object.name='process'][object.property.name='env']" +
-            "[property.name=/SECRET|SERVICE_ROLE/]",
+            "[property.name=/SECRET|SERVICE_ROLE|API_KEY/]",
           message:
-            "Read secrets through getSupabaseSecretEnv() in @/config/env.server, which " +
-            "refuses to run in the browser and rejects browser-exposed names.",
+            "Read secrets through their validated accessor (@/config/env.server, " +
+            "cron.server or provider-keys.server), which refuses to run in the browser " +
+            "and rejects browser-exposed names.",
         },
       ],
     },

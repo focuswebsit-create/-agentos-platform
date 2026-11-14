@@ -29,6 +29,8 @@ export type AgentSummary = {
 export type AgentDetail = AgentSummary & {
   draftVersionId: string;
   draftConfig: AgentDraftConfig;
+  /** The provider the ACTIVE published version runs on; null when nothing is published. */
+  activeProvider: string | null;
   history: Array<{ id: string; version: number; publishedAt: string }>;
 };
 
@@ -128,6 +130,8 @@ export async function getAgent(orgId: string, agentId: string): Promise<AgentDet
       v.published_at !== null && v.version !== null,
   );
 
+  const active = versions.find((v) => v.id === agent.active_version_id);
+
   return {
     id: agent.id,
     name: agent.name,
@@ -138,6 +142,7 @@ export async function getAgent(orgId: string, agentId: string): Promise<AgentDet
     updatedAt: agent.updated_at,
     draftVersionId: draft.id,
     draftConfig: readDraft(draft.config_json),
+    activeProvider: active ? readDraft(active.config_json).provider || null : null,
     history: published.map((v) => ({
       id: v.id,
       version: v.version,

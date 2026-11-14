@@ -1444,3 +1444,57 @@ seven route checks by name.
 | `npm run test:e2e` | exit 0 — `34 passed` |
 | `npm run test:rls` | exit 0 — `PASS 192 FAIL 0 SKIP 0` |
 | secret scan | `findings=0` |
+
+---
+
+## 2026-11-14 — P3: the Anthropic provider, and runs refused before they reserve
+
+### Root causes (Agent Studio)
+
+| Symptom | Cause |
+|---|---|
+| "הבקשה נדחתה מטעמי אבטחה" on save/publish | CSRF accepted only POST — fixed in `aed5111` |
+| Anthropic always "לא מוגדר" | catalog hardcoded `configured: false`; no Anthropic implementation existed |
+| Role ignored by the model | executor sent `instructions` only |
+| (found while fixing) a run without `SUPABASE_SECRET_KEY` held budget forever | dispatch reserved before checking the runtime could execute or be swept |
+
+### Changed files
+
+- `package.json`, `package-lock.json` — `@anthropic-ai/sdk` 1.8.0 (exact)
+- `src/config/provider-keys.server.ts` (new) — server-only key accessor
+- `eslint.config.mjs` — ring 3 for provider keys; `API_KEY` added to the raw-env rule
+- `src/modules/agent-engine/providers/anthropic.ts` (new)
+- `src/modules/agent-engine/provider.ts` — failure codes, provider estimate, served model, truncation
+- `src/modules/agent-engine/rate-card.ts` — Anthropic list prices, cache tokens, long-prompt tier, ceiling for unlisted Claude models, legacy aliases
+- `src/modules/agent-engine/model-registry.ts` — static catalog, readiness removed
+- `src/modules/agent-engine/registry.ts` — Anthropic registered; `studioProviderOptions()`, `isProviderConfigured()`
+- `src/modules/runtime/executor.ts` — role + instructions; provider estimate preferred; served model recorded
+- `src/modules/runtime/readiness.ts` (new)
+- `src/app/api/agents/[id]/run/route.ts` — readiness checks before `start_run`
+- `src/app/api/agents/[id]/publish/route.ts` — provider/model and simulation checks
+- `src/modules/agents/data.ts` — `activeProvider`
+- `src/app/app/agents/[id]/page.tsx`, `src/components/agents/agent-editor.tsx`, `src/components/runs/run-agent-form.tsx`, `src/i18n/{he,en}.ts`
+- `src/modules/contracts/errors.ts`, `src/modules/api/respond.ts` — `PROVIDER_NOT_CONFIGURED`, `RUNTIME_NOT_CONFIGURED` (503)
+- `supabase/seed/dev_templates.sql` — real model ids (dev seed; not applied by me)
+- `.env.example`, `docs/DEPLOYMENT.md`, `docs/adr/0012-anthropic-provider.md`, `DEVELOPMENT_PROGRESS.md`
+- Tests: `tests/unit/anthropic-provider.test.ts` (new), `tests/unit/run-dispatch.test.ts` (new), `tests/unit/model-registry.test.ts` (rewritten), `tests/unit/agent-engine.test.ts`, `tests/unit/executor.test.ts`, `tests/unit/contracts.test.ts`
+
+### Mutation checks (each must make a test fail)
+
+| Mutation | Caught by |
+|---|---|
+| drop the fallback ceiling from the output budget | budget test |
+| executor sends instructions only | role test |
+| registry never marks configured | 2 registry tests |
+| retry every error, incl. timeouts | no-retry-on-timeout test |
+
+### Not run / not verified
+
+- **No live Anthropic call.** No key in this environment; spending needs owner approval.
+- Preview verification of save → publish → run: Vercel is unreachable from here (403).
+- gitleaks: not installed locally; runs in CI.
+
+### Next PR recommendation
+
+Verify the simulated run on the preview once the owner sets the Preview
+variables; then version restore and draft test-runs in Agent Studio.

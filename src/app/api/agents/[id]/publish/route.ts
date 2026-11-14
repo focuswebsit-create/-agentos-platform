@@ -4,6 +4,9 @@ import { createSupabaseServerClient } from "@/modules/supabase/server";
 import { guardApi } from "@/modules/api/guard";
 import { getAgent } from "@/modules/agents/data";
 import { validateForPublish } from "@/modules/contracts";
+import { isCatalogModel } from "@/modules/agent-engine/model-registry";
+import { resolveModelId } from "@/modules/agent-engine/rate-card";
+import { isMockProviderEnabled } from "@/modules/agent-engine/registry";
 import { mapDatabaseError, okJson, problem } from "@/modules/api/respond";
 
 const BodySchema = z.object({ orgId: z.uuid() });
@@ -54,6 +57,26 @@ export async function POST(
     return problem(
       "AGENT_CONFIG_INVALID",
       `לא ניתן לפרסם: חסרים או שגויים השדות ${validation.fields.join(", ")}.`,
+      guard.requestId,
+    );
+  }
+
+  // A version is immutable once published, so a provider/model pair nothing
+  // can run must be caught here rather than discovered at the first run.
+  const { provider, model } = agent.draftConfig;
+  if (!isCatalogModel(provider, resolveModelId(model))) {
+    return problem(
+      "AGENT_CONFIG_INVALID",
+      "לא ניתן לפרסם: הספק או המודל שנבחרו אינם נתמכים. בחרו ספק ומודל מהרשימה.",
+      guard.requestId,
+    );
+  }
+  // The simulation provider exists for development and tests. Publishing on it
+  // where it is disabled would freeze a version that can never run.
+  if (provider === "mock" && !isMockProviderEnabled()) {
+    return problem(
+      "AGENT_CONFIG_INVALID",
+      "לא ניתן לפרסם על ספק הסימולציה: הוא אינו זמין בסביבה הזו.",
       guard.requestId,
     );
   }

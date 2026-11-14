@@ -20,7 +20,11 @@ import type { TokenUsage } from "./rate-card";
  */
 
 export type ProviderRequest = {
-  /** Internal picker key, e.g. "anthropic:sonnet-family". Never a real model id. */
+  /**
+   * The model key stored on the agent version: a real model id such as
+   * "claude-sonnet-5-5", or a legacy picker key that `resolveModelId()` maps
+   * to one. Each provider resolves it; the executor does not.
+   */
   model: string;
   systemPrompt: string;
   userInput: string;
@@ -42,21 +46,48 @@ export type ProviderSuccess = {
    * was — a bill built from estimates without saying so is a fabricated number.
    */
   reportedCostUsdMicros: number | null;
+  /**
+   * The provider's own estimate, when it can price more precisely than the
+   * executor - e.g. a request that ran on more than one model because a
+   * server-side fallback served it, where each attempt has its own rate. Still
+   * an estimate, and recorded as one.
+   */
+  estimatedCostUsdMicros?: number | null;
+  /** The model that actually produced the answer, when it differs from the request. */
+  servedModel?: string;
+  /** True when the answer stopped at the output cap rather than finishing. */
+  truncated?: boolean;
 };
+
+export type ProviderFailureCode =
+  | "PROVIDER_UNAVAILABLE"
+  | "PROVIDER_REFUSED"
+  | "PROVIDER_TIMEOUT"
+  | "PROVIDER_CANCELLED"
+  /** The provider rejected the server's key. An operator problem, not the tenant's. */
+  | "PROVIDER_AUTH"
+  /** The provider rejected the request as malformed or unsupported. Retrying will not help. */
+  | "PROVIDER_BAD_REQUEST"
+  | "PROVIDER_RATE_LIMITED"
+  /** Billed, but the output cap was reached before any answer text was produced. */
+  | "PROVIDER_OUTPUT_LIMIT"
+  /** Refused before sending: the run's budget cannot cover even a minimal answer. */
+  | "BUDGET_TOO_LOW";
 
 export type ProviderFailure = {
   ok: false;
   /** Stable, short, and safe to store. Never the provider's raw message. */
-  code: "PROVIDER_UNAVAILABLE" | "PROVIDER_REFUSED" | "PROVIDER_TIMEOUT" | "PROVIDER_CANCELLED";
+  code: ProviderFailureCode;
   /** Usage incurred before the failure. Null when nothing was sent. */
   usage: TokenUsage | null;
   reportedCostUsdMicros: number | null;
+  estimatedCostUsdMicros?: number | null;
 };
 
 export type ProviderResult = ProviderSuccess | ProviderFailure;
 
 export interface ModelProvider {
-  /** Matches `ProviderOption.id` in model-registry.ts. */
+  /** Matches `ProviderOption.id` in model-registry.ts and `config.provider` on an agent. */
   readonly id: string;
   /**
    * Whether this provider can actually be called right now — for a real

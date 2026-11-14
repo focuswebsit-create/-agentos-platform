@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Field, FormAlert, Spinner, TextField } from "@/components/auth/form-parts";
-import { MODEL_PROVIDERS, hasConfiguredProvider } from "@/modules/agent-engine/model-registry";
+import { hasConfiguredProvider, type ProviderOption } from "@/modules/agent-engine/model-registry";
+import { resolveModelId } from "@/modules/agent-engine/rate-card";
 import { sendJson } from "@/components/auth/api-client";
 import type { AgentDraftConfig } from "@/modules/contracts";
 import type { AgentDetail } from "@/modules/agents/data";
@@ -42,6 +43,7 @@ export function AgentEditor({
   canEdit,
   canPublish,
   canArchive,
+  providers,
 }: {
   t: Dictionary;
   orgId: string;
@@ -49,6 +51,8 @@ export function AgentEditor({
   canEdit: boolean;
   canPublish: boolean;
   canArchive: boolean;
+  /** Decided on the server: which providers this deployment can actually call. */
+  providers: readonly ProviderOption[];
 }) {
   const router = useRouter();
   const e = t.agents.editor;
@@ -57,7 +61,12 @@ export function AgentEditor({
 
   const [name, setName] = React.useState(agent.name);
   const [description, setDescription] = React.useState(agent.description ?? "");
-  const [config, setConfig] = React.useState<AgentDraftConfig>(agent.draftConfig);
+  // A draft saved with a legacy picker key opens on the real model it runs on,
+  // so the select shows a value and the next save stores the real id.
+  const [config, setConfig] = React.useState<AgentDraftConfig>(() => ({
+    ...agent.draftConfig,
+    model: agent.draftConfig.model ? resolveModelId(agent.draftConfig.model) : "",
+  }));
   const [spendUsd, setSpendUsd] = React.useState(microsToUsd(agent.draftConfig.maxSpendUsdMicros));
 
   const [error, setError] = React.useState<string | null>(null);
@@ -67,10 +76,8 @@ export function AgentEditor({
   const set = <K extends keyof AgentDraftConfig>(key: K, value: AgentDraftConfig[K]) =>
     setConfig((prev) => ({ ...prev, [key]: value }));
 
-  const models = React.useMemo(
-    () => MODEL_PROVIDERS.find((p) => p.id === config.provider)?.models ?? [],
-    [config.provider],
-  );
+  const selectedProvider = providers.find((p) => p.id === config.provider);
+  const models = selectedProvider?.models ?? [];
 
   /** Returns whether everything was written, so publish can refuse to proceed. */
   async function saveDraft(announce = true): Promise<boolean> {
@@ -158,7 +165,11 @@ export function AgentEditor({
       {/* Stated before anything is published, not after: an agent that cannot
           run is a definition, and presenting it as live would be a dummy
           result (CLAUDE.md rule 4). */}
-      {!hasConfiguredProvider() ? <FormAlert tone="info">{e.noProviderNotice}</FormAlert> : null}
+      {!hasConfiguredProvider(providers) ? (
+        <FormAlert tone="info">{e.noProviderNotice}</FormAlert>
+      ) : selectedProvider && !selectedProvider.configured ? (
+        <FormAlert tone="info">{e.selectedProviderNotConfigured}</FormAlert>
+      ) : null}
       {error ? <FormAlert tone="error">{error}</FormAlert> : null}
       {notice ? <FormAlert tone="success">{notice}</FormAlert> : null}
 
@@ -211,9 +222,10 @@ export function AgentEditor({
           </Field>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            {/* Driven by the registry, never a hardcoded list (PRD section 9),
-                and every option says plainly that it is not connected. A picker
-                that looked ready would be a fictional integration. */}
+            {/* Driven by the server's registry, never a hardcoded list (PRD
+                section 9). Every option says plainly whether this deployment
+                can call it; a picker that looked ready when it was not would
+                be a fictional integration. */}
             <Field id="agentProvider" label={e.providerLabel}>
               <NativeSelect
                 id="agentProvider"
@@ -225,9 +237,15 @@ export function AgentEditor({
                 disabled={!editable}
               >
                 <option value="">{e.providerPlaceholder}</option>
-                {MODEL_PROVIDERS.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.configured ? p.label : `${p.label} — ${e.providerNotConfigured}`}
+                {providers.map((p) => (
+                  <option key={p.id} value={p.id} disabled={!p.implemented}>
+                    {!p.implemented
+                      ? `${p.label} — ${e.providerComingSoon}`
+                      : p.simulation
+                        ? `${p.label} — ${e.providerSimulation}`
+                        : p.configured
+                          ? p.label
+                          : `${p.label} — ${e.providerNotConfigured}`}
                   </option>
                 ))}
               </NativeSelect>

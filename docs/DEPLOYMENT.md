@@ -13,12 +13,34 @@ Nothing here applies a migration or changes a cloud setting. Every item marked
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | everything behind a login | The auth screens render "ההתחברות אינה זמינה כרגע" and name the two missing variables. No form is shown. `/app/*` redirects to sign-in, `/admin/*` answers 404. The marketing site is unaffected. |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | as above | as above |
-| `SUPABASE_SECRET_KEY` | Super Admin, the run executor, the reservation sweeper | `/admin/*` answers 404 even to a real administrator. A dispatched run cannot settle and is reclaimed by the sweeper as `RUN_ABANDONED`. Customer screens are unaffected. |
+| `SUPABASE_SECRET_KEY` | Super Admin, the run executor, the reservation sweeper | `/admin/*` answers 404 even to a real administrator. **Runs are refused before dispatch** with `RUNTIME_NOT_CONFIGURED` (503) and nothing is reserved; the playground says why. Customer screens are otherwise unaffected. |
 | `AGENTOS_CRON_SECRET` | the reservation sweeper | `/api/internal/sweep-reservations` answers 404 to everyone, so nothing reclaims budget from crashed runs. **Required in any deployment that executes runs.** At least 24 characters; shorter is treated as absent. |
-| `AGENTOS_ENABLE_MOCK_PROVIDER` | running an agent in a non-production environment | No provider is registered, so a run fails with `PROVIDER_NOT_CONFIGURED`. This is the correct production state. Set it to `1` on previews only. |
+| `ANTHROPIC_API_KEY` | running agents on Claude (Opus 5.5, Sonnet 5.5, Haiku 5.5) | Studio lists Anthropic as "לא מוגדר"; publishing still works; a run is refused before dispatch with `PROVIDER_NOT_CONFIGURED` (503) and nothing is reserved. **Server-only: never `NEXT_PUBLIC_`.** If a `NEXT_PUBLIC_ANTHROPIC_API_KEY` exists the provider refuses to start, because the key has then already leaked into a browser bundle — rotate it. **Setting it means real charges on the Anthropic account that owns the key** — an owner decision. |
+| `AGENTOS_ENABLE_MOCK_PROVIDER` | the simulation provider, for testing save → publish → run without a real model | The simulation is not offered in Studio and cannot be published on. Set it to `1` on previews only, **never production**: every simulated answer is labelled "[סימולציה — לא תשובת מודל]", but a paying customer should never see one. |
 | `NEXT_PUBLIC_SITE_URL` | CSRF origin checks, email redirect links | Falls back to the request's own origin, which is correct on Vercel but means an email link may point at a preview URL rather than the canonical one. |
 
 `.env.example` is the authoritative list and carries the same notes.
+
+### Verifying save → publish → run on a preview
+
+1. Set `SUPABASE_SECRET_KEY` and `AGENTOS_CRON_SECRET` on the agentos-demo
+   **Preview** environment, and either `AGENTOS_ENABLE_MOCK_PROVIDER=1` (free,
+   simulated) or `ANTHROPIC_API_KEY` (real model, real charges). Redeploy.
+2. Agent Studio → an agent → choose **Simulation** (or **Anthropic** and a
+   Claude model) → **שמירת טיוטה** → **פרסום גרסה**.
+3. In **הרצת בדיקה**, send any text. The run page shows the status, the answer
+   and its cost.
+   - Simulation: the answer starts with "[סימולציה — לא תשובת מודל]".
+   - Anthropic: a real answer, and a cost recorded as *estimated* from
+     Anthropic's list prices (the API reports no per-request cost).
+4. If it fails, the error code on the run page says which of the above is missing.
+
+**Server-side fallback** is enabled for Claude Opus 5.5 and Claude Sonnet 5.5
+(`fallbacks: "default"`): if Anthropic's safety classifiers decline a request,
+Anthropic re-runs it on its recommended fallback model instead of returning a
+refusal. The fallback attempt is billed at that model's own rate, and the run's
+output cap already assumes the worst case, so the run still cannot exceed its
+budget. Claude Haiku 5.5 does not support it.
 
 ### Setting them for Preview specifically
 

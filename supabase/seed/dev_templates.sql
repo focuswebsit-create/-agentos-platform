@@ -42,7 +42,7 @@ insert into seed_templates (slug, category, name, description, definition) value
           'אם חסר לך מידע, אמור זאת במפורש והפנה לנציג אנושי. ' ||
           'אל תמציא מדיניות החזרות, מחירים או מועדי אספקה שלא נמסרו לך.',
         'provider', 'anthropic',
-        'model', 'anthropic:sonnet-family',
+        'model', 'claude-sonnet-5-5',
         'tools', '[]'::jsonb,
         'knowledgeBaseIds', '[]'::jsonb,
         'maxSteps', 6,
@@ -61,7 +61,7 @@ insert into seed_templates (slug, category, name, description, definition) value
           'אל תבטיח תוצאות מספריות ואל תשתמש בסופרלטיבים שאי אפשר לגבות. ' ||
           'אם הבריף חסר קהל יעד או מטרה, בקש אותם לפני הכתיבה.',
         'provider', 'anthropic',
-        'model', 'anthropic:sonnet-family',
+        'model', 'claude-sonnet-5-5',
         'tools', '[]'::jsonb,
         'knowledgeBaseIds', '[]'::jsonb,
         'maxSteps', 8,
@@ -79,7 +79,7 @@ insert into seed_templates (slug, category, name, description, definition) value
           'ענה אך ורק על סמך המסמכים שסופקו לך. ציין לצד כל טענה את המסמך והקטע שממנו היא נלקחה. ' ||
           'אם התשובה אינה נמצאת במסמכים, אמור "לא מצאתי את זה במסמכים" ואל תשלים מידע מהידע הכללי שלך.',
         'provider', 'anthropic',
-        'model', 'anthropic:sonnet-family',
+        'model', 'claude-sonnet-5-5',
         'tools', '[]'::jsonb,
         'knowledgeBaseIds', '[]'::jsonb,
         'maxSteps', 10,
@@ -98,7 +98,7 @@ insert into seed_templates (slug, category, name, description, definition) value
           'לכל משימה ציין אחראי ומועד אם נאמרו, ואם לא נאמרו כתוב "לא נקבע" במקום לנחש. ' ||
           'אל תייחס אמירה למי שלא אמר אותה.',
         'provider', 'anthropic',
-        'model', 'anthropic:haiku-family',
+        'model', 'claude-haiku-5-5',
         'tools', '[]'::jsonb,
         'knowledgeBaseIds', '[]'::jsonb,
         'maxSteps', 5,

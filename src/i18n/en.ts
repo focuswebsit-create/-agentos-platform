@@ -670,7 +670,11 @@ export const en: Dictionary = {
       providerPlaceholder: "Choose a provider",
       modelPlaceholder: "Choose a model",
       noProviderNotice:
-        "No model provider is connected yet. You can configure and publish an agent, but not run one. A real provider arrives in P3.",
+        "No model provider is configured on this deployment (no server-side API key). You can configure and publish an agent, but not run one.",
+      providerComingSoon: "coming soon",
+      providerSimulation: "simulation — no real model",
+      selectedProviderNotConfigured:
+        "The selected provider is not configured on this deployment. You can save and publish, but runs will fail until an operator configures it.",
       maxStepsLabel: "Maximum steps per run",
       maxSpendLabel: "Spend cap per run (USD)",
       maxSpendHint: "Stored as a whole number of millionths of a dollar, never a float.",
@@ -746,7 +750,13 @@ export const en: Dictionary = {
       running: "Running…",
       needsPublish: "Publish a version before running.",
       noProvider:
-        "No model provider is connected, so nothing can run. A real provider arrives in P3.",
+        "The published version's provider is not configured on this deployment, so it cannot run. A server-side API key is required.",
+      noRuntime:
+        "The execution environment is not configured on the server (no database server key), so nothing can run.",
+      simulationNotice:
+        "The published version uses the simulation provider: no real model is called, and the answer is marked as a simulation.",
+      realProviderNotice:
+        "Running calls a real model. The cost counts against the organisation's spend cap.",
       noPermission: "Viewers cannot run agents.",
     },
   },

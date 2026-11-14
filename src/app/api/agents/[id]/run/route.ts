@@ -4,6 +4,9 @@ import { z } from "zod";
 import { createSupabaseServerClient } from "@/modules/supabase/server";
 import { guardApi } from "@/modules/api/guard";
 import { executeRun } from "@/modules/runtime/executor";
+import { isRuntimeConfigured } from "@/modules/runtime/readiness";
+import { getAgent } from "@/modules/agents/data";
+import { isProviderConfigured } from "@/modules/agent-engine/registry";
 import { mapDatabaseError, okJson, problem } from "@/modules/api/respond";
 
 const BodySchema = z.object({
@@ -46,6 +49,27 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/age
     submittedOrgId: parsed.data.orgId,
   });
   if (!guard.ok) return guard.response;
+
+  // Both checks come BEFORE start_run, because start_run reserves budget. A
+  // run that can never execute must not hold part of the spend cap while it
+  // waits for a sweeper - which, without the runtime key, cannot run either.
+  if (!isRuntimeConfigured()) {
+    return problem(
+      "RUNTIME_NOT_CONFIGURED",
+      "סביבת ההרצה אינה מוגדרת בשרת, ולכן לא ניתן להריץ. לא נגבתה עלות.",
+      guard.requestId,
+    );
+  }
+  const agent = await getAgent(guard.context.orgId, id);
+  if (agent?.activeProvider && !isProviderConfigured(agent.activeProvider)) {
+    return problem(
+      "PROVIDER_NOT_CONFIGURED",
+      "ספק המודלים של הגרסה המפורסמת אינו מוגדר בסביבה הזו, ולכן לא ניתן להריץ. לא נגבתה עלות.",
+      guard.requestId,
+    );
+  }
+  // An agent that is missing or unpublished falls through: start_run gives the
+  // authoritative answer (not found / no version), under RLS.
 
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc("start_run", {

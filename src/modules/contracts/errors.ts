@@ -90,6 +90,21 @@ export const ERROR_CODES = [
    * try again", which is advice that can never work.
    */
   "DATABASE_NOT_PROVISIONED",
+
+  /**
+   * The published version's model provider cannot be called on this
+   * deployment - for Anthropic, no server-side API key. Checked BEFORE a run
+   * reserves budget, so a run that could never execute costs nothing and does
+   * not sit queued holding part of the spend cap.
+   */
+  "PROVIDER_NOT_CONFIGURED",
+
+  /**
+   * The execution plane is not configured (no server-side Supabase secret
+   * key), so nothing could record or settle a run. Refused before dispatch for
+   * the same reason as PROVIDER_NOT_CONFIGURED. An operator problem.
+   */
+  "RUNTIME_NOT_CONFIGURED",
 ] as const;
 
 export const ErrorCodeSchema = z.enum(ERROR_CODES);

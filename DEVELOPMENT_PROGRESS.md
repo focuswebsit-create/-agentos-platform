@@ -1,106 +1,126 @@
 # AgentOS — development progress
 
-Living status file. Update it after every milestone so a new session can pick
-up without re-deriving context.
+Living status file, written so a new session can resume without re-deriving
+context. The **Current status** section is rewritten at every milestone; the
+sections under **History** are append-only.
 
 **Last updated:** 2026-11-14
-**Branch:** `claude/agentos-p1-infrastructure-9gibn2`
-**Last commit:** see `git log -1` (P1: `ae6e48a`, `01cfb60`, `59c4e5b`, plus the hardening commit below)
+**Branch:** `claude/agentos-p1-infrastructure-9gibn2` (never merged to `main`; no production deploy)
+**Last commit:** see `git log -1` — the Anthropic provider commit that follows `aed5111`
 
 ---
 
-## Where the product is
+# Current status
+
+## Phases
 
 | Phase | Scope | Status |
 |---|---|---|
-| **P0** | Scaffold, CI, premium RTL marketing + shells | ✅ Complete, on `main` |
-| **P1** | Auth, organisations, memberships, invitations, RLS, admin boundary | ✅ Code complete, ⚠️ unverified against Supabase |
-| **P2** | Agents + template library | ⬜ Not started |
-| **P3** | Runtime, one real model provider, usage ledger | ⬜ Not started |
-| **P4** | Teams, knowledge, approvals | ⬜ Not started |
-| **P5** | Subscriptions, entitlements, checkout, webhooks | ⬜ Not started |
-| **P6** | Super Admin dashboards and analytics | ⬜ Not started (boundary built in P1) |
-| **P7** | Security, UAT, launch readiness | ⬜ Not started |
+| **P0** | Scaffold, CI, RTL marketing site, shells | ✅ Complete, on `main` |
+| **P1** | Auth, organisations, roles, invitations, RLS, admin boundary | ✅ Code complete · RLS proven locally (192 checks) · ⚠️ GoTrue/PostgREST paths verified only by the owner's manual use of the preview |
+| **P2** | Agent Studio, versions, templates | 🟡 Mostly complete — drafts, publish, immutable versions, history, 4 starter templates, Super Admin template publishing. **Missing:** restore an earlier agent version, test-before-publish on the draft, more domain templates |
+| **P3** | Runtime, real provider, usage ledger | 🟡 Runs, budget reservation, settlement, sweeper, usage ledger, simulation provider, **Anthropic provider (new, mock-tested only)**. **Missing:** durable execution (Inngest), tool calls, conversations/memory, streaming, live Anthropic verification |
+| **P4** | Teams, knowledge, approvals, channels, automations | ⬜ Not started — Web Chat, WhatsApp Business API, triggers, handoff, approvals |
+| **P5** | Subscriptions (sandbox only), quotas, invoices | ⬜ Not started |
+| **P6** | Super Admin | 🟡 Organisations, usage, audit log, templates, enforced suspension. **Missing:** incidents/alerts, live AAL2 verification |
+| **P7** | Security audit, E2E with test accounts, launch readiness | ⬜ Not started |
 
----
+## Last milestone — Agent Studio runs on a real provider
 
-## P1 — what works
+Three faults stood between "Agent Studio" and a working agent:
 
-Sign up → confirm email → sign in → create organisation → invite by link →
-accept invitation → change roles → remove members → switch workspace.
-`/admin` is gated by an active `platform_admins` row plus AAL2.
+1. **Every save was refused as a forgery** (fixed in `aed5111`): the CSRF check
+   accepted only POST, and saving uses PATCH/PUT.
+2. **Anthropic showed "לא מוגדר" on every deployment, by construction.** The
+   catalog hardcoded `configured: false` and no Anthropic implementation
+   existed, so no key could ever have changed it.
+3. **The role an operator wrote never reached the model** — the executor sent
+   only the instructions.
 
-Enforcement is layered and each layer is independent:
+Now:
 
-1. `src/proxy.ts` — session refresh, turns away requests with no session
-2. `resolveOrgContext()` — membership and role re-read from the database every request
-3. `guardApi()` — role matrix, CSRF, stale-organisation detection
-4. **RLS** — the authority; proven by 57 checks
-5. Constraints, triggers and row locks — invariants under concurrency
+- `src/modules/agent-engine/providers/anthropic.ts` — official SDK
+  (`@anthropic-ai/sdk` 1.8.0, pinned), Claude Opus 5.5 / Sonnet 5.5 / Haiku 5.5
+  by real id. The run's budget bounds `max_tokens` before sending, assuming the
+  worst case (prompt = its UTF-8 byte count; with fallback, two billed attempts,
+  the second at the highest Claude price). Retries only 429/500/503/529 —
+  answers the API did not bill — never a timeout. Refusals and truncation are
+  billed failures/flags, never empty successes.
+- **Server-side fallback is ON** for Opus 5.5 and Sonnet 5.5
+  (`fallbacks: "default"`); each attempt is priced at the rate of the model
+  that ran it. Not sent to Haiku 5.5, which rejects it.
+- Key: `ANTHROPIC_API_KEY`, read only by `src/config/provider-keys.server.ts`;
+  a new ESLint ring forbids importing it outside the provider implementations
+  (probed: a stray import fails lint). A `NEXT_PUBLIC_` copy makes the provider
+  refuse to start.
+- Studio's provider list comes from the server, per deployment. The simulation
+  provider appears only where `AGENTOS_ENABLE_MOCK_PROVIDER=1`, labelled as a
+  simulation, and cannot be published on where it is disabled.
+- Publish refuses a provider/model pair nothing can run.
+- **Run dispatch refuses BEFORE reserving budget** when the runtime key or the
+  published version's provider is missing (`RUNTIME_NOT_CONFIGURED`,
+  `PROVIDER_NOT_CONFIGURED`, 503). Previously a run dispatched without
+  `SUPABASE_SECRET_KEY` would hold part of the spend cap indefinitely — the
+  sweeper needs the same key.
+- Rate card: Anthropic list prices as of 2026-11-14 (`anthropic-list-2026-11-14`),
+  recorded as *estimated* because the API reports no per-request cost.
 
----
-
-## Test results
+## Tests and results (this milestone)
 
 | Gate | Result |
 |---|---|
-| `npm run lint` | 0 |
-| `npm run typecheck` | 0 |
-| `npm run format:check` | 0 |
-| `npm test` | 131 passed (10 files) |
-| `npm run build` | 0 — 39 routes |
-| `npm run test:e2e` | 18 passed, run with NO Supabase credentials |
-| `tests/db/rls-suite.mjs` | 57 passed, 0 failed, 0 skipped |
-| `npm audit --omit=dev` | 0 vulnerabilities |
+| `npm run lint` | exit 0 |
+| `npm run typecheck` | exit 0 |
+| `npm run format:check` | exit 0 |
+| `npm test` | exit 0 — 22 files, **307 passed** |
+| `npm run build` | exit 0 |
+| `npm run test:e2e` | exit 0 — 34 passed |
+| `npm run test:rls` | exit 0 — PASS 192 FAIL 0 SKIP 0 (local PostgreSQL 16 + Supabase shim, **not** Supabase) |
+| secret scan (pattern rules, now incl. Anthropic keys) | findings=0 · gitleaks not installed locally; it runs in CI |
 
-**Precise wording for RLS:** the 57 checks ran against a **local PostgreSQL 16
-with a Supabase compatibility shim — not against Supabase.**
+**Mock vs real.** Every Anthropic test runs against a fake SDK call. They prove
+the request shape, the budget bound, pricing and failure mapping. **No request
+has been sent to Anthropic from this session** — there is no key here, and
+spending on the owner's account needs the owner's approval.
 
-The E2E suite runs with **no** Supabase credentials, which also proves safe
-degradation: public site serves, auth screens say they are unavailable,
-private routes redirect, `/admin` answers 404 — never 500.
+## Verified vs not verified
 
-**gitleaks does not run locally** (not installed in the dev image), so the
-local pre-commit scan reports INCOMPLETE, never PASS. CI was only triggered by
-pull requests and pushes to `main`, which meant the full scan had never run on
-this branch at all; the workflow now also triggers on `claude/**`.
+| Claim | Status |
+|---|---|
+| Save / publish no longer refused by CSRF | ✅ unit + systemic route scan; ⚠️ not re-checked on the preview by me |
+| Simulation run end to end on the preview | ⚠️ **not verified** — needs `SUPABASE_SECRET_KEY` + `AGENTOS_ENABLE_MOCK_PROVIDER=1` on agentos-demo Preview |
+| Real Claude run | ⚠️ **not verified** — needs `ANTHROPIC_API_KEY` (owner decision: real charges) |
+| JWT authenticity, AAL2, GoTrue flows, email delivery | ⚠️ not verified (no GoTrue here) |
+| Two-organisation isolation through the UI | ⚠️ not verified (DB layer proven locally) |
 
-**CI run 3 on `2cdb20e`: both jobs green.** Secret scan (gitleaks v8.30.1,
-full history) success; Lint · Typecheck · Format · Unit · Build · E2E all
-success. That closes the gap the local INCOMPLETE verdict leaves open.
+## Blockers — owner action
 
----
-
-## NOT verified — never reported as passing
-
-| # | What | Why |
+| # | What | Unblocks |
 |---|---|---|
-| 1 | JWT authenticity: signature, expiry, refresh rotation | the shim injects claims directly |
-| 2 | `aal2` follows a genuinely verified second factor | a GoTrue property |
-| 3 | GoTrue sign-up, sign-in, confirmation, recovery | no GoTrue locally |
-| 4 | Email delivery | no provider configured |
-| 5 | Real TOTP enrolment | needs a device and a live session |
-| 6 | PostgREST behaviour and schema cache | no PostgREST locally |
-| 7 | Two-organisation isolation end to end through the UI | needs real sessions |
-| 8 | Password policy, leaked-password protection | dashboard settings |
+| 1 | agentos-demo → Settings → Environment Variables (**Preview**): `SUPABASE_SECRET_KEY`, `AGENTOS_CRON_SECRET` (≥24 chars), `AGENTOS_ENABLE_MOCK_PROVIDER=1`; redeploy | simulated save → publish → run |
+| 2 | Decide whether to set `ANTHROPIC_API_KEY` on Preview (real charges on that account) | a real Claude run |
+| 3 | Check **Production Branch** in both Vercel projects is `main` | the dev branch can never replace the live site |
+| 4 | Custom SMTP; privacy policy and terms | real sign-ups, launch |
+| 5 | Sandbox merchant account choice | P5 payments (sandbox only) |
+
+Vercel and the Supabase management API are unreachable from this container
+(403 at the proxy), so items 1–3 cannot be checked from here.
+
+## Last verified Preview URL
+
+**None verified from this session.** `*.vercel.app` and `vercel.com` answer 403
+at the network proxy. Commit build status is read from GitHub commit statuses.
+
+## Next task
+
+1. Owner sets blocker 1 → verify simulated save → publish → run on the preview.
+2. Agent Studio completion: restore an earlier version; run the DRAFT in the
+   playground before publishing (test-before-publish).
+3. P4 start: Web Chat channel and conversations with memory (ADR first).
 
 ---
 
-## Blockers — owner action required
-
-| # | Blocker | Blocks |
-|---|---|---|
-| 1 | **Confirm the `krys…` project is `AgentOS-Development`.** Nothing inside the container can establish this, and applying a migration to the wrong project is irreversible | everything below |
-| 2 | Apply migrations `0001`–`0005` to Supabase Development | items 3–7 of "not verified" |
-| 3 | Create `SUPABASE_SECRET_KEY` | `/admin` (fails closed without it) |
-| 4 | Configure custom SMTP | sign-up, password reset |
-| 5 | Insert the first `platform_admins` row + enrol TOTP | `/admin` access |
-| 6 | Choose an email provider for invitations, or keep copy-link | automatic invitations |
-| 7 | Privacy policy and terms before real sign-ups (`SECURITY.md` 10, Amendment 13) | public launch |
-
-Steps for 1–5 are in `docs/SUPABASE_SETUP.md`.
-
----
+# History
 
 ## Hardening pass (after the first three P1 commits)
 
@@ -808,11 +828,12 @@ requests on any Vercel preview URL other than the configured one.
 `0008` P2 agent and version schema ·
 `0009` P2 template catalog ·
 `0010` P3 runtime schema and the money ·
-`0011` P3 provider abstraction and inline execution.
+`0011` P3 provider abstraction and inline execution ·
+`0012` the Anthropic provider, budget-bounded output and server-side fallback.
 
 ---
 
-## Next task
+## Next task (as of P1 — superseded by Current status above)
 
 **UI-level two-organisation E2E against Supabase Development**, once blockers
 1–4 clear: sign up → confirm → create organisation → invite → accept from a

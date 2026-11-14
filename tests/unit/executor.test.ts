@@ -233,3 +233,58 @@ describe("executeRun", () => {
     expect(db.rpc.at(-1)?.args.p_error_code).toBe("RUNTIME_ERROR");
   });
 });
+
+describe("executeRun - what it sends and how it prices (real-provider paths)", () => {
+  it("sends the role AND the instructions as the system prompt", async () => {
+    // Regression: the executor used to send only the instructions, so the role
+    // an operator set in Agent Studio never reached the model.
+    const { MockProvider } = await import("@/modules/agent-engine/providers/mock");
+    const spy = vi.spyOn(MockProvider.prototype, "complete");
+    await run({ run: QUEUED_RUN, config: VALID_CONFIG });
+    const request = spy.mock.calls[0]?.[0];
+    expect(request?.systemPrompt).toContain(VALID_CONFIG.role);
+    expect(request?.systemPrompt).toContain(VALID_CONFIG.instructions);
+    expect(request?.userInput).toBe("hello");
+    // Nothing tenant-identifying rides along in the prompt.
+    expect(request?.systemPrompt).not.toContain("org-1");
+  });
+
+  it("prefers the provider's own per-attempt estimate, and records the model that served it", async () => {
+    const { MockProvider } = await import("@/modules/agent-engine/providers/mock");
+    vi.spyOn(MockProvider.prototype, "complete").mockResolvedValue({
+      ok: true,
+      output: "answer",
+      usage: { inputTokens: 10, outputTokens: 5 },
+      reportedCostUsdMicros: null,
+      estimatedCostUsdMicros: 777,
+      servedModel: "claude-opus-4-8",
+      truncated: true,
+    });
+    const { settles, db } = await run({ run: QUEUED_RUN, config: VALID_CONFIG });
+    expect(settles[0]?.args.p_cost_usd_micros).toBe(777);
+    expect(settles[0]?.args.p_result).toEqual({ output: "answer", truncated: true });
+    const usage = db.calls.find((c) => c.table === "usage_events")?.payload as Record<
+      string,
+      unknown
+    >;
+    expect(usage.model).toBe("claude-opus-4-8");
+    expect(usage.cost_usd_micros).toBe(777);
+    expect(usage.estimate_source).toBe("estimated");
+  });
+
+  it("refuses to dispatch to Anthropic without a server-side key, and settles at zero", async () => {
+    const saved = process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    try {
+      const { outcome, settles } = await run({
+        run: QUEUED_RUN,
+        config: { ...VALID_CONFIG, provider: "anthropic", model: "claude-sonnet-5-5" },
+      });
+      expect(outcome).toMatchObject({ ok: false, code: "PROVIDER_NOT_CONFIGURED" });
+      expect(settles).toHaveLength(1);
+      expect(Number(settles[0]?.args.p_cost_usd_micros)).toBe(0);
+    } finally {
+      if (saved !== undefined) process.env.ANTHROPIC_API_KEY = saved;
+    }
+  });
+});

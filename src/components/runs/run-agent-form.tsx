@@ -23,6 +23,8 @@ export function RunAgentForm({
   canRun,
   isPublished,
   providerConfigured,
+  simulation = false,
+  runtimeConfigured = true,
 }: {
   t: Dictionary;
   orgId: string;
@@ -30,6 +32,10 @@ export function RunAgentForm({
   canRun: boolean;
   isPublished: boolean;
   providerConfigured: boolean;
+  /** The published version runs on the simulation provider. Said up front. */
+  simulation?: boolean;
+  /** The server can record and settle runs. Without it, nothing may be dispatched. */
+  runtimeConfigured?: boolean;
 }) {
   const router = useRouter();
   const p = t.runs.playground;
@@ -43,7 +49,9 @@ export function RunAgentForm({
       ? p.needsPublish
       : !providerConfigured
         ? p.noProvider
-        : null;
+        : !runtimeConfigured
+          ? p.noRuntime
+          : null;
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -69,6 +77,7 @@ export function RunAgentForm({
 
   return (
     <form onSubmit={submit} className="space-y-4" noValidate>
+      <FormAlert tone="info">{simulation ? p.simulationNotice : p.realProviderNotice}</FormAlert>
       {error ? <FormAlert tone="error">{error}</FormAlert> : null}
       <Field id="runPrompt" label={p.inputLabel}>
         <Textarea

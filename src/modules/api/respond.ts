@@ -21,6 +21,9 @@ const STATUS_BY_CODE: Partial<Record<ErrorCode, number>> = {
   INVITATION_INVALID: 400,
   VALIDATION_FAILED: 400,
   RATE_LIMITED: 429,
+  PROVIDER_NOT_CONFIGURED: 503,
+  RUNTIME_NOT_CONFIGURED: 503,
+  DATABASE_NOT_PROVISIONED: 503,
 };
 
 export function newRequestId(): string {
