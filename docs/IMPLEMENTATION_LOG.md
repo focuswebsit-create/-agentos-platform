@@ -754,3 +754,78 @@ Both failed for the right reason and passed again on restore.
 2. Multi-step execution: the current executor performs exactly one model call.
 3. P6 Super Admin, which is unblocked and is also the only path to publishing
    production templates.
+
+---
+
+## 2026-11-14 — P3 step 3: the sweeper has a schedule
+
+Closes the gap the previous entry named as the most significant open one in P3.
+
+### Changed
+
+| File | Change |
+|---|---|
+| `src/config/cron.server.ts` | new — the cron secret, with a browser guard and constant-time comparison |
+| `src/modules/runtime/sweeper.ts` | new — `sweepExpiredReservations()` |
+| `src/app/api/internal/sweep-reservations/route.ts` | new — GET and POST, 404 on every rejection |
+| `vercel.json` | new — every 15 minutes |
+| `eslint.config.mjs` | `cron.server.ts` exempted from the `process.env.*SECRET*` rule, with the reason |
+| `.env.example` | `AGENTOS_CRON_SECRET`, and why a deployment that executes runs needs it |
+| `tests/unit/cron-auth.test.ts` | new — 5 checks |
+| `tests/e2e/smoke.spec.ts` | the endpoint 404s to an anonymous caller and to a guessed secret |
+
+### Commands and exact results
+
+| Command | Result |
+|---|---|
+| `npm run lint` | exit 0 |
+| `npm run typecheck` | exit 0 |
+| `npm run format:check` | exit 0 |
+| `npm test` | exit 0 — `Tests 177 passed (177)` |
+| `npm run build` | exit 0 |
+| `npm run test:e2e` | exit 0 — `24 passed` |
+| `npm run test:rls` | exit 0 — `PASS 159 FAIL 0 SKIP 0` |
+| secret scan (local) | `findings=0 errors=0 credential_files=0` |
+
+### Two rules caught their own violations while this was written
+
+1. The route first imported the service-role client directly. ESLint ring 2
+   refused it: the route is not the execution plane. The work moved to
+   `src/modules/runtime/sweeper.ts` and the route kept only the question of
+   whether the caller may ask — which is the better split regardless.
+2. The cron secret was going to be another export of `@/config/env.server`.
+   That would have let whoever needs it also reach the Supabase key, defeating
+   ring 1. It is its own file, and the lint exemption names it explicitly.
+
+### A test that passed for the wrong reason, caught
+
+`hasCronSecret()` refuses to run when `window` is defined. jsdom defines
+`window`, so under the default environment every assertion in the new test file
+would have been satisfied by the guard rather than by the logic. The file runs
+in the node environment and says why in its header.
+
+### Deliberate choices
+
+- **GET and POST both work.** A GET that changes state is normally wrong, but
+  Vercel Cron issues GET and a POST-only endpoint the scheduler cannot call is
+  an endpoint that never runs. The secret is what protects it, not the method,
+  and the operation only expires reservations whose deadline has already passed.
+- **404 on every rejection**, including a misconfigured deployment, so an
+  unauthenticated caller cannot tell a working deployment from a broken one.
+- **A short secret counts as absent.** Treating it as valid would leave the
+  endpoint open behind a token someone picked in a hurry.
+
+### Not verified
+
+The schedule itself. `vercel.json` is config for a deployment that has not
+happened; nothing here proves Vercel will call it. What is verified is that the
+endpoint refuses everyone without the secret, that the sweep function works
+(RLS suite group 12), and that the route builds.
+
+### Next
+
+1. Multi-step execution — the executor performs exactly one model call.
+2. P6 Super Admin, unblocked, and the only path to publishing production
+   templates.
+3. **Blocked on the owner:** a real provider key (P3's other gate half) and a
+   merchant account (P5).

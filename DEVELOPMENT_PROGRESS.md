@@ -461,8 +461,18 @@ invocation. A process that dies takes the run with it and nothing retries.
 What makes that survivable rather than silent is the reservation:
 `expire_stale_reservations()` reclaims the budget and marks the run
 `RUN_ABANDONED`. An abandoned run costs the tenant nothing permanent and does
-not sit in the UI claiming to be running. **The sweeper has no schedule yet** —
-it is a function and nothing calls it. That is the remaining gap.
+not sit in the UI claiming to be running. **The sweeper now has a schedule.**
+`/api/internal/sweep-reservations` runs it, `vercel.json` calls that every 15
+minutes, and `AGENTOS_CRON_SECRET` authenticates it in constant time. Every
+rejection is a bare 404 — a 401 would confirm the endpoint exists and that
+someone is knocking on the right door — and an absent or too-short secret
+disables the route rather than leaving it open.
+
+The secret lives in `src/config/cron.server.ts`, a file of its own rather than
+another export of `env.server`. ESLint ring 1 exists so the Supabase key has
+exactly one reader; adding a second secret there would mean whoever needs the
+cron secret could also reach the BYPASSRLS key. One secret per file, each with
+its own browser guard.
 
 ### The service-role client moved, and the containment got tighter
 

@@ -81,7 +81,10 @@ const eslintConfig = defineConfig([
   // validated accessor and its browser/naming guards.
   {
     files: ["src/**/*.{ts,tsx}"],
-    ignores: ["src/config/env.server.ts"],
+    // cron.server.ts is the second, and only other, reader of a server secret.
+    // It is a separate file precisely so that whoever needs the cron secret
+    // cannot also reach the Supabase one (see its header comment).
+    ignores: ["src/config/env.server.ts", "src/config/cron.server.ts"],
     rules: {
       "no-restricted-syntax": [
         "error",

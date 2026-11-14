@@ -127,6 +127,22 @@ test("state-changing API routes refuse an unauthenticated, CSRF-less call", asyn
   expect(getSwitch.status()).toBe(405);
 });
 
+test("the internal sweeper is invisible without its secret", async ({ request }) => {
+  // 404, not 401: a 401 would confirm the endpoint exists and that someone is
+  // knocking on the right door. CI sets no AGENTOS_CRON_SECRET, so this also
+  // covers the unconfigured case, which must refuse rather than stand open.
+  for (const res of await Promise.all([
+    request.get("/api/internal/sweep-reservations"),
+    request.post("/api/internal/sweep-reservations", { data: {} }),
+    request.post("/api/internal/sweep-reservations", {
+      headers: { "x-agentos-cron-secret": "guessed-value-that-is-long-enough" },
+      data: {},
+    }),
+  ])) {
+    expect(res.status()).toBe(404);
+  }
+});
+
 test("agent, template and run routes are closed to an unauthenticated, CSRF-less caller", async ({
   request,
 }) => {
