@@ -4,6 +4,8 @@ import { RuntimeAgentConfigSchema } from "@/modules/contracts";
 import { getProvider } from "@/modules/agent-engine/registry";
 import { priceTokens, RATE_CARD_VERSION } from "@/modules/agent-engine/rate-card";
 import type { ProviderResult } from "@/modules/agent-engine/provider";
+import { buildKnowledgeContext } from "@/modules/knowledge/text";
+import { retrieveKnowledge } from "./knowledge";
 
 /**
  * The execution plane.
@@ -223,9 +225,19 @@ export async function executeRun(
 
     const prompt = typeof run.input_json?.prompt === "string" ? run.input_json.prompt : "";
 
+    // Knowledge, scoped to this run's organisation, framed as data.
+    const retrieval = await retrieveKnowledge(db, run.org_id, config.knowledgeBaseIds, prompt);
+    const knowledge = buildKnowledgeContext(retrieval.chunks);
+    const systemPrompt = [
+      buildSystemPrompt(config.role, config.instructions, config.goals),
+      knowledge,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+
     const result: ProviderResult = await provider.complete({
       model: config.model,
-      systemPrompt: buildSystemPrompt(config.role, config.instructions, config.goals),
+      systemPrompt,
       userInput: prompt,
       maxSteps: config.maxSteps,
       maxSpendUsdMicros: Number(run.budget_usd_micros),
@@ -285,6 +297,10 @@ export async function executeRun(
                 inputTokens: usage.inputTokens,
                 outputTokens: usage.outputTokens,
                 outputChars: result.ok ? result.output.length : 0,
+                // Counts only: which knowledge was used is not prompt text,
+                // but its content is, and stays out of the trace.
+                knowledgeChunks: retrieval.chunks.length,
+                ...(retrieval.status === "unavailable" ? { knowledgeUnavailable: true } : {}),
                 ...(result.ok && result.truncated ? { truncated: true } : {}),
               }
             : {},

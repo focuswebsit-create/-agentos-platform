@@ -10,6 +10,7 @@ import { resolveOrgContext } from "@/modules/tenancy/context";
 import { getAgent } from "@/modules/agents/data";
 import { isProviderConfigured, studioProviderOptions } from "@/modules/agent-engine/registry";
 import { isRuntimeConfigured } from "@/modules/runtime/readiness";
+import { listKnowledgeBaseOptions } from "@/modules/knowledge/data";
 import { getDictionary } from "@/i18n";
 
 const t = getDictionary();
@@ -28,7 +29,10 @@ export default async function AgentDetailPage(props: PageProps<"/app/agents/[id]
   if (resolution.status === "no_organization") redirect("/onboarding");
 
   const { context } = resolution;
-  const agent = await getAgent(context.orgId, id);
+  const [agent, knowledgeOptions] = await Promise.all([
+    getAgent(context.orgId, id),
+    listKnowledgeBaseOptions(context.orgId),
+  ]);
   if (!agent) notFound();
 
   return (
@@ -71,6 +75,7 @@ export default async function AgentDetailPage(props: PageProps<"/app/agents/[id]
         canPublish={can(context.role, "agent.publish")}
         canArchive={can(context.role, "agent.archive")}
         providers={studioProviderOptions()}
+        knowledgeOptions={knowledgeOptions}
       />
     </div>
   );

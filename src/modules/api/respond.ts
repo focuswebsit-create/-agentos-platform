@@ -24,6 +24,7 @@ const STATUS_BY_CODE: Partial<Record<ErrorCode, number>> = {
   RUN_CONCURRENCY_LIMIT: 429,
   USAGE_LIMIT_REACHED: 402,
   SUBSCRIPTION_INACTIVE: 402,
+  PLAN_FEATURE_UNAVAILABLE: 402,
   PROVIDER_NOT_CONFIGURED: 503,
   RUNTIME_NOT_CONFIGURED: 503,
   DATABASE_NOT_PROVISIONED: 503,
@@ -100,6 +101,15 @@ export function mapDatabaseError(error: string | { message?: string; code?: stri
       code: "ORG_SUSPENDED",
       message: "סביבת העבודה מושעית ואי אפשר להתחיל הרצות חדשות.",
     };
+  }
+  if (m.includes("PLAN_FEATURE_UNAVAILABLE")) {
+    return {
+      code: "PLAN_FEATURE_UNAVAILABLE",
+      message: "הגעתם למגבלה של התוכנית הנוכחית לפעולה הזו.",
+    };
+  }
+  if (m.includes("knowledge_documents_dedupe")) {
+    return { code: "VALIDATION_FAILED", message: "המסמך הזה כבר קיים במאגר." };
   }
   if (m.includes("SUBSCRIPTION_INACTIVE")) {
     return {

@@ -283,6 +283,11 @@ test("agent, template and run routes are closed to an unauthenticated, CSRF-less
     // The recovery kick runs with the service role behind it, so it must be
     // shut to anyone without a session and a CSRF token like every other route.
     request.post(`/api/runs/${id}/execute`, { data: { orgId: id } }),
+    request.post(`/api/knowledge`, { data: { orgId: id, name: "Valid name" } }),
+    request.post(`/api/knowledge/${id}/documents`, {
+      data: { orgId: id, title: "t", sourceType: "paste", mimeType: "text/plain", content: "x" },
+    }),
+    request.delete(`/api/knowledge/documents/${id}`, { data: { orgId: id } }),
   ];
   for (const res of await Promise.all(calls)) {
     // 403 for the CSRF refusal, 401 if the session check answers first; never

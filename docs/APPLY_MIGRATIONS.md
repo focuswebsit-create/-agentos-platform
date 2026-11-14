@@ -180,6 +180,14 @@ Paste `supabase/migrations/0021_test_runs.sql` after 0020 (it uses 0020's
 other run path keeps working (the application reads runs with `*`, so it does
 not depend on the new columns).
 
+### Then 0022 (knowledge sources)
+
+Paste `supabase/migrations/0022_knowledge.sql` after 0021 (it uses 0020's
+entitlements for the knowledge-base limit). Three new tables and two
+functions; no existing row changes. Until it is applied, the knowledge screen
+says so, and runs proceed without knowledge (the trace records
+`knowledgeUnavailable`).
+
 ---
 
 ## If something goes wrong

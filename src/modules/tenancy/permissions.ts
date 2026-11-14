@@ -40,6 +40,11 @@ export const ORG_ACTIONS = [
   "run.start",
   "run.cancel",
   "usage.read",
+
+  // P4. Mirrors supabase/migrations/0022_knowledge.sql.
+  "knowledge.read",
+  "knowledge.write",
+  "knowledge.delete",
 ] as const;
 export type OrgAction = (typeof ORG_ACTIONS)[number];
 
@@ -77,6 +82,9 @@ const MATRIX: Readonly<Record<OrgAction, readonly OrgRole[]>> = {
   // Per-call spend and monthly totals, matching 0014's policies and P1's rule
   // that viewers and members do not see billing.
   "usage.read": ["owner", "admin"],
+  "knowledge.read": ["owner", "admin", "member", "viewer"],
+  "knowledge.write": ["owner", "admin", "member"],
+  "knowledge.delete": ["owner", "admin"],
 };
 
 export function can(role: OrgRole, action: OrgAction): boolean {

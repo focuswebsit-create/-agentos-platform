@@ -44,6 +44,7 @@ export function AgentEditor({
   canPublish,
   canArchive,
   providers,
+  knowledgeOptions = [],
 }: {
   t: Dictionary;
   orgId: string;
@@ -53,6 +54,8 @@ export function AgentEditor({
   canArchive: boolean;
   /** Decided on the server: which providers this deployment can actually call. */
   providers: readonly ProviderOption[];
+  /** This organisation's knowledge bases, read under RLS. */
+  knowledgeOptions?: ReadonlyArray<{ id: string; name: string }>;
 }) {
   const router = useRouter();
   const e = t.agents.editor;
@@ -266,6 +269,38 @@ export function AgentEditor({
               maxLength={2_000}
             />
           </Field>
+
+          <fieldset className="space-y-2" data-testid="agent-knowledge">
+            <legend className="text-sm font-medium">{t.knowledge.agentSelectorLabel}</legend>
+            {knowledgeOptions.length === 0 ? (
+              <p className="text-xs text-muted-foreground">{t.knowledge.agentSelectorEmpty}</p>
+            ) : (
+              <div className="flex flex-wrap gap-x-5 gap-y-2">
+                {knowledgeOptions.map((option) => {
+                  const checked = config.knowledgeBaseIds.includes(option.id);
+                  return (
+                    <label key={option.id} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={!editable}
+                        onChange={() =>
+                          set(
+                            "knowledgeBaseIds",
+                            checked
+                              ? config.knowledgeBaseIds.filter((id) => id !== option.id)
+                              : [...config.knowledgeBaseIds, option.id],
+                          )
+                        }
+                      />
+                      {option.name}
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">{t.knowledge.agentSelectorHint}</p>
+          </fieldset>
 
           <div className="grid gap-4 sm:grid-cols-2">
             {/* Driven by the server's registry, never a hardcoded list (PRD
