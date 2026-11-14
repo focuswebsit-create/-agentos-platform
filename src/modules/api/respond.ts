@@ -50,11 +50,42 @@ export function okJson<T>(data: T, init?: { status?: number }) {
  * rather than second-guessed. Anything unrecognised becomes a generic failure:
  * a raw driver message can carry schema details and must never reach a client.
  */
-export function mapDatabaseError(message: string | undefined): {
+export function mapDatabaseError(error: string | { message?: string; code?: string } | undefined): {
   code: ErrorCode;
   message: string;
 } {
-  const m = message ?? "";
+  const m = typeof error === "string" ? error : (error?.message ?? "");
+  const pgCode = typeof error === "string" ? "" : (error?.code ?? "");
+
+  /**
+   * Checked first, and by code rather than by prose.
+   *
+   * PGRST205 is a missing table, PGRST202 a missing function. Both mean the
+   * schema this deployment expects is not installed, and both used to fall
+   * through to the generic "try again" at the bottom of this function - which
+   * is how "create your first organisation" came to answer "something went
+   * wrong, try again" on an empty database. Retrying could never have worked.
+   *
+   * The message says what is wrong without naming a table, a function or any
+   * part of the driver's text.
+   */
+  if (
+    pgCode === "PGRST202" ||
+    pgCode === "PGRST205" ||
+    pgCode === "42P01" || // undefined_table
+    pgCode === "42883" || // undefined_function
+    m.includes("schema cache") ||
+    /relation ".*" does not exist/.test(m) ||
+    /function .*does not exist/.test(m)
+  ) {
+    return {
+      code: "DATABASE_NOT_PROVISIONED",
+      message:
+        "סביבת הנתונים אינה מוכנה: המיגרציות טרם הוחלו על הפרויקט הזה. " +
+        "ניסיון חוזר לא יעזור. ראו /diagnostics/config.",
+    };
+  }
+
   if (m.includes("SEAT_LIMIT_REACHED")) {
     return { code: "SEAT_LIMIT_REACHED", message: "לא נותרו מושבים פנויים בארגון." };
   }

@@ -55,7 +55,7 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/age
   });
 
   if (error) {
-    const mapped = mapDatabaseError(error.message);
+    const mapped = mapDatabaseError(error);
     return problem(mapped.code, mapped.message, guard.requestId);
   }
 

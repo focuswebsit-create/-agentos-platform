@@ -35,7 +35,14 @@ export async function listTeamMembers(orgId: string): Promise<TeamMember[]> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("memberships")
-    .select("user_id, role, created_at, profiles!inner(display_name)")
+    // NOT `profiles!inner`. An inner join drops any member whose profile row is
+    // missing, and a member who exists but is not listed is a worse failure
+    // than one listed as "—": it hid an organisation's own owner from its team
+    // screen, and read as zero on the dashboard. That happened to everyone who
+    // signed up before the profile trigger existed (see 0018). The fallback to
+    // "—" below was already written for exactly this; the inner join had made
+    // it unreachable.
+    .select("user_id, role, created_at, profiles(display_name)")
     .eq("org_id", orgId)
     .order("created_at", { ascending: true });
 

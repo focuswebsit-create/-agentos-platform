@@ -728,6 +728,55 @@ credential-shaped literal in the source.
 
 ---
 
+## "Create your first organisation" failed — the database is empty
+
+Root cause, measured with a read-only probe of the Development project:
+`organizations` → `PGRST205`, `create_organization` → `PGRST202`. None of the
+migrations has been applied, so the function the onboarding screen calls does
+not exist. **No code change can fix that; the migrations have to be applied**,
+and they are waiting on the owner. `docs/APPLY_MIGRATIONS.md` has the exact
+steps.
+
+What *was* a code bug: the error mapper matched on prose, recognised neither
+PostgREST code, and fell through to "something went wrong, try again" — advice
+that could never work. It now matches on the code and answers
+`DATABASE_NOT_PROVISIONED` with a message that says retrying will not help,
+without naming a table or function.
+
+### Rehearsing the apply found two more things
+
+The bundle (`supabase/apply/`) was rehearsed end to end on a fresh
+Supabase-like database: preflight, one-transaction apply, 53-row verify, and a
+second run that is refused and leaves an identical schema fingerprint.
+
+**1. `anon` could have called twelve functions on real Supabase.** Supabase
+grants `EXECUTE` on every new function to `anon` *directly*, through default
+privileges; `revoke … from public` does not touch that. The local shim did not
+reproduce Supabase's defaults, so every "anon cannot execute" test was passing
+for the wrong reason. None of the twelve was exploitable — each rejects an
+anonymous caller in its first line — but that was one layer where there should
+be two, and a future function that forgot the check would have been open in
+production while passing every test here. The shim now reproduces the
+defaults; group 14 failed against all twelve, then **0017** closed them.
+
+**2. Everyone who signed up through the preview has no profile.** The profile
+trigger only fires for users created after it exists. Reproduced: such a user
+creates YADINOS, holds one real owner membership, and the team screen shows
+**zero** members. **0018** backfills the profile with the trigger's own naming
+rule (insert only, idempotent), and the team query no longer uses an inner join
+that could hide a member — the "—" fallback for a missing profile was already
+written and the inner join had made it unreachable.
+
+### `create_organization` had never been tested through the RPC
+
+Every group built organisations with `makeOrg()`, which inserts as the schema
+owner. The very first thing a customer does had no positive test. Group 15 now
+walks it as the signed-in user: create YADINOS → owner → readable → invisible
+to a stranger → audited → first agent → draft, plus the taken-slug,
+unverified-email and early-sign-up cases. **`PASS 192 FAIL 0`.**
+
+---
+
 ## Decisions on record
 
 `docs/adr/0001` single app · `0002` admin boundary in P1, dashboards in P6 ·

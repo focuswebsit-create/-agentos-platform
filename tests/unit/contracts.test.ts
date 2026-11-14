@@ -148,6 +148,7 @@ describe("Error taxonomy", () => {
       "AGENT_VERSION_IMMUTABLE",
       "TEMPLATE_NOT_AVAILABLE",
       "ORG_SUSPENDED",
+      "DATABASE_NOT_PROVISIONED",
     ]) {
       expect(ERROR_CODES).toContain(code);
     }
@@ -159,7 +160,7 @@ describe("Error taxonomy", () => {
 
   it("has no duplicates and a known size, so a code is never added by accident", () => {
     expect(new Set(ERROR_CODES).size).toBe(ERROR_CODES.length);
-    expect(ERROR_CODES).toHaveLength(26);
+    expect(ERROR_CODES).toHaveLength(27);
   });
 
   it("validates the error envelope", () => {

@@ -53,7 +53,7 @@ export async function PUT(request: NextRequest, context: RouteContext<"/api/agen
     .maybeSingle();
 
   if (error) {
-    const mapped = mapDatabaseError(error.message);
+    const mapped = mapDatabaseError(error);
     return problem(mapped.code, mapped.message, guard.requestId);
   }
   if (!data) {

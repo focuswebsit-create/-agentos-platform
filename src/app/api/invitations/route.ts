@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
     if (error.code === "23505") {
       return problem("VALIDATION_FAILED", "כבר קיימת הזמנה פתוחה לכתובת הזו.", requestId);
     }
-    const mapped = mapDatabaseError(error.message);
+    const mapped = mapDatabaseError(error);
     return problem(mapped.code, mapped.message, requestId);
   }
 

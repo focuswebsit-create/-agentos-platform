@@ -68,3 +68,33 @@ grant usage on schema auth to anon, authenticated, service_role;
 -- NOTHING on auth.users: email addresses stay unreadable to clients, which is
 -- exactly why public.profiles exists.
 grant select on auth.users to service_role;
+
+-- -----------------------------------------------------------------------------
+-- Supabase's default privileges
+--
+-- A real Supabase project ships with:
+--
+--   alter default privileges in schema public
+--     grant all on tables, sequences, functions to anon, authenticated, service_role;
+--
+-- so every function a migration creates is EXECUTABLE BY anon AND authenticated
+-- DIRECTLY - not through PUBLIC. `revoke execute ... from public` does not
+-- touch a direct grant, so a migration that revokes only from public leaves
+-- anon able to call the function in production.
+--
+-- This shim did not reproduce that, and the gap was real: twelve RPCs revoked
+-- only from public. All twelve happen to reject an anonymous caller internally
+-- (each checks auth.uid() first), so nothing was exploitable - but every
+-- "anon cannot execute X" assertion in the suite was passing for the wrong
+-- reason, and a future function that forgot its internal check would have been
+-- anon-callable in production while passing every local test.
+--
+-- Scoped to the migrator role, because default privileges are per-grantor and
+-- the migrations run as agentos_migrator here (as `postgres` does on Supabase).
+-- -----------------------------------------------------------------------------
+alter default privileges in schema public
+  grant all on tables to anon, authenticated, service_role;
+alter default privileges in schema public
+  grant all on sequences to anon, authenticated, service_role;
+alter default privileges in schema public
+  grant execute on functions to anon, authenticated, service_role;

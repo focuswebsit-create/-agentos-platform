@@ -52,7 +52,7 @@ export async function PATCH(request: NextRequest, context: RouteContext<"/api/ag
     .maybeSingle();
 
   if (error) {
-    const mapped = mapDatabaseError(error.message);
+    const mapped = mapDatabaseError(error);
     return problem(mapped.code, mapped.message, guard.requestId);
   }
   // No row updated means the agent is invisible to this user or archived. Both

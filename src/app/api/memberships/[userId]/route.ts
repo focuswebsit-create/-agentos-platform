@@ -75,7 +75,7 @@ export async function PATCH(request: NextRequest, ctx: RouteContext<"/api/member
     .select("user_id");
 
   if (error) {
-    const mapped = mapDatabaseError(error.message);
+    const mapped = mapDatabaseError(error);
     return problem(mapped.code, mapped.message, guard.requestId);
   }
   if (!data || data.length === 0) {
@@ -146,7 +146,7 @@ export async function DELETE(request: NextRequest, ctx: RouteContext<"/api/membe
   if (error) {
     // The deferred owner-guard trigger raises here when this would leave the
     // organisation without an owner.
-    const mapped = mapDatabaseError(error.message);
+    const mapped = mapDatabaseError(error);
     return problem(mapped.code, mapped.message, guard.requestId);
   }
 

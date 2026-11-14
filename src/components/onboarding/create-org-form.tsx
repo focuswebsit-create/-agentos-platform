@@ -44,7 +44,13 @@ export function CreateOrgForm({ t }: { t: Dictionary }) {
       setPending(false);
       if (res.code === "ORG_SLUG_TAKEN") setErrors({ slug: t.onboarding.slugTaken });
       else if (res.code === "EMAIL_NOT_VERIFIED") setFormError(t.auth.errors.emailNotConfirmed);
-      else setFormError(t.auth.errors.generic);
+      // The one case where "try again" is actively wrong advice. The database
+      // has no schema, so this can never succeed until the migrations are
+      // applied - and the person reading it is usually the person who can do
+      // that. Previously it fell into the generic branch below.
+      else if (res.code === "DATABASE_NOT_PROVISIONED")
+        setFormError(t.onboarding.databaseNotProvisioned);
+      else setFormError(res.message ?? t.auth.errors.generic);
       return;
     }
 

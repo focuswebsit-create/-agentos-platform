@@ -558,6 +558,8 @@ export const en: Dictionary = {
     submit: "Create organisation",
     creating: "Creating…",
     slugTaken: "That id is taken. Pick another.",
+    databaseNotProvisioned:
+      "The data environment is not ready: the migrations have not been applied to this Supabase project. Retrying will not help — the migrations need applying. Installation status is shown at /diagnostics/config.",
     whatHappens: "What happens next",
     step1: "You get an empty, isolated workspace",
     step2: "You pick a starting template, or start from scratch",

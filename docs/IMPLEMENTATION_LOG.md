@@ -1283,3 +1283,80 @@ missing variable.
 The preview itself. The network here blocks `*.vercel.app` and `vercel.com`, so
 the page can only be exercised against a local production build — which it was,
 in both configurations.
+
+---
+
+## 2026-11-14 — organisation creation on an empty database
+
+### Root cause
+
+Read-only probe of the Development project:
+
+| Request | Response |
+|---|---|
+| `GET /rest/v1/organizations` | `PGRST205` — table not in schema cache |
+| `POST /rest/v1/rpc/create_organization` | `PGRST202` — function not in schema cache |
+
+No migration has been applied. The function does not exist.
+
+The screen said "משהו השתבש. נסו שוב." because `mapDatabaseError` matched on
+message text only, recognised neither code, and returned a generic retry. That
+part was a code defect and is fixed.
+
+### Changed
+
+| File | Change |
+|---|---|
+| `src/modules/api/respond.ts` | `mapDatabaseError` takes the error object and matches PGRST202/205 and 42P01/42883 by code |
+| 13 API routes | pass the error object, not its message |
+| `src/modules/contracts/errors.ts` | `DATABASE_NOT_PROVISIONED` |
+| `src/components/onboarding/create-org-form.tsx` | shows it; other codes show the server's message rather than a generic string |
+| `src/modules/tenancy/team.ts` | left join on profiles, so a missing profile cannot hide a member |
+| `supabase/tests/01_supabase_shim.sql` | reproduces Supabase's default privileges |
+| `supabase/migrations/0017_revoke_anon_execute.sql` | new |
+| `supabase/migrations/0018_backfill_profiles.sql` | new |
+| `supabase/apply/{00_preflight,01_bundle_development,02_verify}.sql` | new |
+| `scripts/build-apply-bundle.sh` | new — generates the bundle |
+| `docs/APPLY_MIGRATIONS.md` | new — exact owner steps |
+| `tests/db/rls-suite.mjs` | groups 14 and 15 |
+| `tests/unit/database-errors.test.ts`, `tests/unit/apply-bundle.test.ts` | new |
+
+### Commands and exact results
+
+| Command | Result |
+|---|---|
+| `npm run lint` | exit 0 |
+| `npm run typecheck` | exit 0 |
+| `npm run format:check` | exit 0 |
+| `npm test` | exit 0 — `Tests 216 passed (216)` |
+| `npm run build` | exit 0 |
+| `npm run test:e2e` | exit 0 — `34 passed` |
+| `npm run test:rls` | exit 0 — `PASS 192 FAIL 0 SKIP 0` |
+| secret scan | `findings=0` |
+
+### Bundle rehearsal, on a fresh Supabase-like database
+
+| Step | Result |
+|---|---|
+| `00_preflight.sql` | auth.users, three roles, CREATE privilege present; 0 AgentOS objects |
+| `01_bundle_development.sql` | exit 0, one transaction |
+| `02_verify.sql` | 53 checks, 53 true |
+| bundle a second time | refused (exit 3); schema fingerprint identical before and after |
+| early sign-up, then bundle | profile backfilled; YADINOS shows 1 member |
+| full RLS suite on the bundle-installed schema | 190/190 at the time; 192/192 after 0018 |
+
+### Mistakes caught during the work
+
+- `02_verify.sql` used `check` as a column alias. It is a reserved word; the
+  script would have failed in the owner's SQL Editor. Found by running it.
+- The first "second run changed nothing" check compared two empty strings — the
+  fingerprint query had a type error. Re-run with a working fingerprint before
+  the claim was made.
+- The drift test was mutation-checked: appending a line to 0018 without
+  regenerating fails it.
+
+### Not verified
+
+Anything against Supabase itself. The Supabase CLI path in the doc is marked as
+unverified: the CLI is not installed here and the management API is
+unreachable.

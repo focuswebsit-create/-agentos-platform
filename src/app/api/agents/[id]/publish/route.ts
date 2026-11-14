@@ -62,7 +62,7 @@ export async function POST(
   const { data, error } = await supabase.rpc("publish_agent_version", { p_agent_id: id });
 
   if (error) {
-    const mapped = mapDatabaseError(error.message);
+    const mapped = mapDatabaseError(error);
     return problem(mapped.code, mapped.message, guard.requestId);
   }
 

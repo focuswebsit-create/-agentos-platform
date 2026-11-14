@@ -79,6 +79,17 @@ export const ERROR_CODES = [
    * reason is on their own organisation row and shown on every page.
    */
   "ORG_SUSPENDED",
+
+  /**
+   * The database schema this deployment needs is not installed. Distinct from
+   * every other failure because retrying cannot help and the person who sees
+   * it is usually the person who can fix it.
+   *
+   * PostgREST answers PGRST205 for a missing table and PGRST202 for a missing
+   * function. Both used to fall through to a generic "something went wrong,
+   * try again", which is advice that can never work.
+   */
+  "DATABASE_NOT_PROVISIONED",
 ] as const;
 
 export const ErrorCodeSchema = z.enum(ERROR_CODES);

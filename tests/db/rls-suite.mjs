@@ -2294,6 +2294,227 @@ try {
       else bad(g, "restoring clears the reason and the timestamp", JSON.stringify(r.rows[0]));
     }
   }
+
+  /* ---- 14. anon executes nothing (Supabase default privileges) --- */
+  g = "14-anon-execute";
+  {
+    // A real Supabase project grants EXECUTE on every new public function to
+    // anon and authenticated DIRECTLY, through default privileges, not through
+    // PUBLIC. The shim now reproduces that, so this group sees what production
+    // would. Before the shim did, every "anon cannot execute" assertion in this
+    // suite was passing for the wrong reason.
+    const { rows } = await m.query(`
+      select p.proname
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public'
+        and p.prorettype <> 'trigger'::regtype
+        and has_function_privilege('anon', p.oid, 'EXECUTE')
+      order by 1`);
+    if (rows.length === 0) ok(g, "anon holds EXECUTE on no public function");
+    else
+      bad(
+        g,
+        "anon holds EXECUTE on no public function",
+        `anon can execute: ${rows.map((r) => r.proname).join(", ")}`,
+      );
+
+    // The privilege check above is the real assertion. This one proves the
+    // privilege is what stops it, rather than the function's own auth.uid()
+    // check happening to reject the caller.
+    await expectDenied(
+      g,
+      "an anonymous caller is refused by privilege, before the function body runs",
+      async () => {
+        await t.query("SET ROLE anon");
+        try {
+          await t.query(`select public.create_organization('Probe','probe-anon')`);
+        } finally {
+          await t.query("RESET ROLE").catch(() => {});
+        }
+      },
+      "permission denied",
+    );
+
+    // authenticated must keep what it needs: the customer RPCs exist to be
+    // called by signed-in users.
+    for (const fn of ["create_organization", "create_agent", "start_run", "install_template"]) {
+      const r = await m.query(
+        `select bool_or(has_function_privilege('authenticated', p.oid, 'EXECUTE')) as ok
+         from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+         where n.nspname = 'public' and p.proname = $1`,
+        [fn],
+      );
+      if (r.rows[0]?.ok) ok(g, `authenticated keeps EXECUTE on ${fn}`);
+      else bad(g, `authenticated keeps EXECUTE on ${fn}`, "privilege missing");
+    }
+  }
+
+  /* ---- 15. the first-run path, end to end: YADINOS --------------- */
+  g = "15-first-run";
+  {
+    // Every other group builds its organisations with makeOrg(), which inserts
+    // as the schema owner and never calls create_organization(). So the very
+    // first thing a customer does - the action that failed on the preview -
+    // had never been exercised through the function they actually call.
+    // This group walks that path exactly, as the signed-in user, through RPCs
+    // only, the way the onboarding screen does.
+    const founder = await makeUser(m, `yadinos-founder-${tag}@example.test`);
+    const stranger = await makeUser(m, `yadinos-stranger-${tag}@example.test`);
+    const slug = `yadinos-${tag}`;
+
+    let orgId;
+    await expectAllowed(g, "a verified user can create YADINOS", () =>
+      act(t, founder, async () => {
+        const r = await t.query(`select public.create_organization($1,$2) as id`, [
+          "YADINOS",
+          slug,
+        ]);
+        orgId = r.rows[0].id;
+      }),
+    );
+
+    await expectRows(
+      g,
+      "the creator is its owner",
+      () =>
+        m.query(
+          `select 1 from public.memberships where org_id=$1 and user_id=$2 and role='owner'`,
+          [orgId, founder],
+        ),
+      1,
+    );
+    await expectRows(
+      g,
+      "the creator can read it back through RLS",
+      () =>
+        act(t, founder, () =>
+          t.query(`select id from public.organizations where id=$1 and name='YADINOS'`, [orgId]),
+        ),
+      1,
+    );
+    await expectRows(
+      g,
+      "a stranger cannot see it",
+      () =>
+        act(t, stranger, () => t.query(`select id from public.organizations where id=$1`, [orgId])),
+      0,
+    );
+    await expectRows(
+      g,
+      "its creation is audited",
+      () =>
+        m.query(
+          `select 1 from public.audit_events
+           where org_id=$1 and action='organization.created' and actor_user_id=$2`,
+          [orgId, founder],
+        ),
+      1,
+    );
+
+    // The next thing the customer does: their first agent.
+    let agentId;
+    await expectAllowed(g, "the owner can create a first agent in it", () =>
+      act(t, founder, async () => {
+        const r = await t.query(`select public.create_agent($1,$2,null) as id`, [
+          orgId,
+          "סוכן ראשון",
+        ]);
+        agentId = r.rows[0].id;
+      }),
+    );
+    await expectRows(
+      g,
+      "the agent has its draft, ready to edit",
+      () =>
+        act(t, founder, () =>
+          t.query(
+            `select 1 from public.agent_versions where agent_id=$1 and published_at is null`,
+            [agentId],
+          ),
+        ),
+      1,
+    );
+
+    // The refusals the onboarding screen has to translate.
+    await expectDenied(
+      g,
+      "a taken slug answers ORG_SLUG_TAKEN, not a generic failure",
+      () =>
+        act(t, stranger, () =>
+          t.query(`select public.create_organization($1,$2)`, ["Copycat", slug]),
+        ),
+      "ORG_SLUG_TAKEN",
+    );
+    await expectDenied(
+      g,
+      "an unverified email answers EMAIL_NOT_VERIFIED",
+      async () => {
+        const unverified = await makeUser(m, `yadinos-unverified-${tag}@example.test`, {
+          verified: false,
+        });
+        await act(t, unverified, () =>
+          t.query(`select public.create_organization($1,$2)`, ["Early", `early-${tag}`]),
+        );
+      },
+      "EMAIL_NOT_VERIFIED",
+    );
+    {
+      // 0018: someone who signed up BEFORE the profile trigger existed has no
+      // profile row. That was everyone who registered through the preview
+      // before the migrations were applied, and the team screen joined to
+      // profiles, so it hid the organisation's own owner and read as zero
+      // members. Replays that: insert a user with the trigger off, then run
+      // 0018's statement and confirm the row appears.
+      const early = "11111111-2222-4333-8444-" + tag.toString().padStart(12, "0").slice(-12);
+      await m.query("alter table auth.users disable trigger on_auth_user_created");
+      try {
+        await m.query(
+          `insert into auth.users (id, email, email_confirmed_at, raw_user_meta_data)
+           values ($1, $2, now(), '{"display_name":"Early Founder"}'::jsonb)`,
+          [early, `early-founder-${tag}@example.test`],
+        );
+      } finally {
+        await m.query("alter table auth.users enable trigger on_auth_user_created");
+      }
+      const before = await m.query(`select 1 from public.profiles where user_id=$1`, [early]);
+      const backfill = readFileSync(
+        new URL("../../supabase/migrations/0018_backfill_profiles.sql", import.meta.url),
+        "utf8",
+      );
+      await m.query(backfill);
+      const after = await m.query(`select display_name from public.profiles where user_id=$1`, [
+        early,
+      ]);
+      if (before.rowCount === 0 && after.rows[0]?.display_name === "Early Founder")
+        ok(g, "0018 gives an early sign-up the profile the trigger would have made");
+      else
+        bad(
+          g,
+          "0018 gives an early sign-up the profile the trigger would have made",
+          `before=${before.rowCount} after=${JSON.stringify(after.rows)}`,
+        );
+
+      // Running it again must change nothing.
+      const count1 = (await m.query(`select count(*)::int as n from public.profiles`)).rows[0].n;
+      await m.query(backfill);
+      const count2 = (await m.query(`select count(*)::int as n from public.profiles`)).rows[0].n;
+      if (count1 === count2) ok(g, "0018 is safe to run twice");
+      else bad(g, "0018 is safe to run twice", `${count1} -> ${count2}`);
+    }
+    {
+      // The slug is normalised to lower case, so "YADINOS" and "yadinos" are
+      // the same workspace rather than two that look identical.
+      const upper = `UPPER-${tag}`.toUpperCase();
+      let id;
+      await act(t, stranger, async () => {
+        id = (await t.query(`select public.create_organization($1,$2) as id`, ["Upper", upper]))
+          .rows[0].id;
+      });
+      const r = await m.query(`select slug from public.organizations where id=$1`, [id]);
+      if (r.rows[0].slug === upper.toLowerCase()) ok(g, "the slug is stored in lower case");
+      else bad(g, "the slug is stored in lower case", `got ${r.rows[0].slug}`);
+    }
+  }
 } finally {
   await m.end().catch(() => {});
   await t.end().catch(() => {});
