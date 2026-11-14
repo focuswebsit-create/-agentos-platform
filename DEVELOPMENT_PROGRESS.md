@@ -60,6 +60,11 @@ The E2E suite runs with **no** Supabase credentials, which also proves safe
 degradation: public site serves, auth screens say they are unavailable,
 private routes redirect, `/admin` answers 404 — never 500.
 
+**gitleaks does not run locally** (not installed in the dev image), so the
+local pre-commit scan reports INCOMPLETE, never PASS. CI was only triggered by
+pull requests and pushes to `main`, which meant the full scan had never run on
+this branch at all; the workflow now also triggers on `claude/**`.
+
 ---
 
 ## NOT verified — never reported as passing

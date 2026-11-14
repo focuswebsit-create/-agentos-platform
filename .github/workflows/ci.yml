@@ -3,7 +3,12 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    # Development branches are included deliberately. The local pre-commit
+    # scanner cannot run gitleaks (it is not installed in the dev image), so
+    # without this the strongest secret scan would only ever run at pull-request
+    # time — after the secret is already in the remote history, which is exactly
+    # when it is too late.
+    branches: [main, "claude/**"]
 
 permissions:
   contents: read
