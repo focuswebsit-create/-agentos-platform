@@ -224,8 +224,10 @@ export const he = {
         orgCreated: "הארגון נוצר",
         inviteTeam: "הזמינו את הצוות",
         inviteTeamDone: "הצוות הוזמן",
-        buildAgent: "בניית סוכן ראשון — יופעל בשלב P2",
-        runAgent: "הרצה מול ספק AI אמיתי — יופעל בשלב P3",
+        buildAgent: "בניית הסוכן הראשון",
+        buildAgentDone: "נבנה סוכן ראשון",
+        runAgent: "הרצה ראשונה",
+        runAgentDone: "בוצעה הרצה ראשונה",
       },
       studioCard: {
         title: "Agent Studio",

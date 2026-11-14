@@ -829,3 +829,43 @@ endpoint refuses everyone without the secret, that the sweep function works
    templates.
 3. **Blocked on the owner:** a real provider key (P3's other gate half) and a
    merchant account (P5).
+
+---
+
+## 2026-11-14 — the overview stops claiming agents are unbuilt
+
+A small change, recorded because it is the same class of defect as the ones
+before it: a screen stating something that stopped being true.
+
+`/app` labelled its agent, run and spend cards "arrives in phase P2" and
+"arrives in phase P3", and the quick-start list had "Build your first agent —
+arrives in phase P2" permanently unticked. All three exist now. A customer who
+had built an agent and run it was being told, on the first screen they see,
+that neither feature was available.
+
+### Changed
+
+| File | Change |
+|---|---|
+| `src/app/app/page.tsx` | agents, runs and spend are measured; `planned` is now empty |
+| `src/i18n/{he,en}.ts` | quick-start steps lose their phase labels and gain done-states |
+
+Spend is shown only to roles that may see it. 0014 withholds the figure from
+members and viewers, so rendering a zero for them would be a wrong number
+rather than a private one — the card is absent instead.
+
+`planned` is kept as an empty array rather than deleted, so the next unbuilt
+metric has an honest place to go instead of appearing as a zero.
+
+### Commands and exact results
+
+| Command | Result |
+|---|---|
+| `npm run lint` | exit 0 |
+| `npm run typecheck` | exit 0 |
+| `npm run format:check` | exit 0 |
+| `npm test` | exit 0 — `Tests 177 passed (177)` |
+| `npm run build` | exit 0 |
+| `npm run test:e2e` | exit 0 — `24 passed` |
+| `npm run test:rls` | exit 0 — `PASS 159 FAIL 0 SKIP 0` |
+| secret scan (local) | `findings=0 errors=0 credential_files=0` |

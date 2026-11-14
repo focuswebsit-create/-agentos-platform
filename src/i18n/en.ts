@@ -225,8 +225,10 @@ export const en: Dictionary = {
         orgCreated: "Organisation created",
         inviteTeam: "Invite your team",
         inviteTeamDone: "Team invited",
-        buildAgent: "Build your first agent — arrives in phase P2",
-        runAgent: "Run against a real AI provider — arrives in phase P3",
+        buildAgent: "Build your first agent",
+        buildAgentDone: "First agent built",
+        runAgent: "Start your first run",
+        runAgentDone: "First run completed",
       },
       studioCard: {
         title: "Agent Studio",

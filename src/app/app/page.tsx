@@ -17,6 +17,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { can } from "@/modules/tenancy";
 import { resolveOrgContext } from "@/modules/tenancy/context";
 import { getSeatUsage, listPendingInvitations, listTeamMembers } from "@/modules/tenancy/team";
+import { listAgents } from "@/modules/agents/data";
+import { listRuns, getUsageSummary } from "@/modules/runtime/data";
 import { getDictionary, interpolate } from "@/i18n";
 
 const t = getDictionary();
@@ -39,10 +41,13 @@ export default async function DashboardPage() {
   const o = t.app.overview;
   const isAdmin = can(context.role, "member.invite");
 
-  const [members, invitations, seats] = await Promise.all([
+  const [members, invitations, seats, agents, runs, usage] = await Promise.all([
     listTeamMembers(context.orgId),
     isAdmin ? listPendingInvitations(context.orgId) : Promise.resolve([]),
     isAdmin ? getSeatUsage(context.orgId) : Promise.resolve(null),
+    listAgents(context.orgId),
+    listRuns(context.orgId),
+    can(context.role, "usage.read") ? getUsageSummary(context.orgId) : Promise.resolve(null),
   ]);
 
   // Real, measured values. Nothing here is a placeholder.
@@ -76,16 +81,39 @@ export default async function DashboardPage() {
           },
         ]
       : []),
+    {
+      key: "agents",
+      icon: BotIcon,
+      label: o.cards.agents,
+      value: String(agents.length),
+      note: null,
+    },
+    {
+      key: "runs",
+      icon: PlayCircleIcon,
+      label: o.cards.runs,
+      value: String(runs.length),
+      note: null,
+    },
+    // Spend is a measurement for those who may see it and absent for everyone
+    // else, rather than shown as zero. 0014 withholds the figure from members
+    // and viewers, so a zero here would be a wrong number, not a private one.
+    ...(usage
+      ? [
+          {
+            key: "spend",
+            icon: CircleDollarSignIcon,
+            label: o.cards.spend,
+            value: `$${(usage.spentUsdMicros / 1_000_000).toFixed(2)}`,
+            note: null,
+          },
+        ]
+      : []),
   ];
 
-  // Not built yet. Labelled with the phase that delivers them rather than
-  // shown as an empty metric, which would read as "zero runs" instead of
-  // "runs do not exist yet".
-  const planned = [
-    { key: "agents", icon: BotIcon, label: o.cards.agents, phase: "P2" },
-    { key: "runs", icon: PlayCircleIcon, label: o.cards.runs, phase: "P3" },
-    { key: "spend", icon: CircleDollarSignIcon, label: o.cards.spend, phase: "P3" },
-  ];
+  // Every card above is now measured. This stays, empty, so the next unbuilt
+  // metric has somewhere honest to go instead of appearing as a zero.
+  const planned: Array<{ key: string; icon: typeof BotIcon; label: string; phase: string }> = [];
 
   const steps = [
     { label: o.quickStart.orgCreated, done: true },
@@ -93,8 +121,14 @@ export default async function DashboardPage() {
       label: members.length > 1 ? o.quickStart.inviteTeamDone : o.quickStart.inviteTeam,
       done: members.length > 1,
     },
-    { label: o.quickStart.buildAgent, done: false },
-    { label: o.quickStart.runAgent, done: false },
+    {
+      label: agents.length > 0 ? o.quickStart.buildAgentDone : o.quickStart.buildAgent,
+      done: agents.length > 0,
+    },
+    {
+      label: runs.length > 0 ? o.quickStart.runAgentDone : o.quickStart.runAgent,
+      done: runs.length > 0,
+    },
   ];
 
   return (
