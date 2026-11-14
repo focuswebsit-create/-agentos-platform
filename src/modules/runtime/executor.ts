@@ -54,6 +54,9 @@ type RunRow = {
   agent_version_id: string;
   input_json: { prompt?: unknown } | null;
   budget_usd_micros: string | number;
+  /** 0021. Absent on a database without it, which is the same as false. */
+  is_test?: boolean;
+  config_snapshot?: unknown;
 };
 
 type VersionRow = { config_json: unknown };
@@ -101,7 +104,10 @@ export async function executeRun(
 
   const { data: runData, error: runError } = await db
     .from("runs")
-    .select("id, org_id, status, agent_version_id, input_json, budget_usd_micros")
+    // `*` rather than a column list: is_test and config_snapshot exist only
+    // once 0021 is applied, and naming them would make every run fail with a
+    // read error on a database that does not have them yet.
+    .select("*")
     .eq("id", runId)
     .maybeSingle();
 
@@ -175,16 +181,23 @@ export async function executeRun(
   };
 
   try {
-    const { data: versionData } = await db
-      .from("agent_versions")
-      .select("config_json")
-      .eq("id", run.agent_version_id)
-      .eq("org_id", run.org_id)
-      .maybeSingle();
+    // A test run executes the snapshot taken at dispatch - never the live
+    // draft, which may have been edited since. A normal run executes its
+    // pinned published version.
+    let rawConfig: unknown;
+    if (run.is_test === true) {
+      rawConfig = run.config_snapshot;
+    } else {
+      const { data: versionData } = await db
+        .from("agent_versions")
+        .select("config_json")
+        .eq("id", run.agent_version_id)
+        .eq("org_id", run.org_id)
+        .maybeSingle();
+      rawConfig = (versionData as VersionRow | null)?.config_json;
+    }
 
-    const parsed = RuntimeAgentConfigSchema.safeParse(
-      (versionData as VersionRow | null)?.config_json,
-    );
+    const parsed = RuntimeAgentConfigSchema.safeParse(rawConfig);
     if (!parsed.success) return await fail("AGENT_CONFIG_INVALID");
     const config = parsed.data;
 

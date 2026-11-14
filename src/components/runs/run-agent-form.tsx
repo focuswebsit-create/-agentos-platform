@@ -41,30 +41,29 @@ export function RunAgentForm({
   const p = t.runs.playground;
   const [prompt, setPrompt] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
-  const [pending, setPending] = React.useState(false);
+  const [pending, setPending] = React.useState<"published" | "draft" | null>(null);
 
-  const blocked = !canRun
-    ? p.noPermission
-    : !isPublished
-      ? p.needsPublish
-      : !providerConfigured
-        ? p.noProvider
-        : !runtimeConfigured
-          ? p.noRuntime
-          : null;
+  // Two independent questions. Testing the saved draft needs only permission
+  // and a runtime: it works before the first publish, which is the point.
+  // Running the published version additionally needs one, on a configured
+  // provider. The server re-checks every one of these.
+  const blocked = !canRun ? p.noPermission : !runtimeConfigured ? p.noRuntime : null;
+  const publishedBlocked = !isPublished
+    ? p.needsPublish
+    : !providerConfigured
+      ? p.noProvider
+      : null;
 
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function dispatch(target: "published" | "draft") {
     setError(null);
-    setPending(true);
+    setPending(target);
 
-    const res = await sendJson<{ runId: string }>(`/api/agents/${agentId}/run`, "POST", {
-      orgId,
-      prompt,
-    });
+    const url =
+      target === "draft" ? `/api/agents/${agentId}/test-run` : `/api/agents/${agentId}/run`;
+    const res = await sendJson<{ runId: string }>(url, "POST", { orgId, prompt });
 
     if (!res.ok) {
-      setPending(false);
+      setPending(null);
       setError(res.message ?? t.auth.errors.generic);
       return;
     }
@@ -73,12 +72,18 @@ export function RunAgentForm({
     router.push(`/app/runs/${res.data.runId}`);
   }
 
+  function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!publishedBlocked) void dispatch("published");
+  }
+
   if (blocked) return <FormAlert tone="info">{blocked}</FormAlert>;
 
   return (
     <form onSubmit={submit} className="space-y-4" noValidate>
       <FormAlert tone="info">{simulation ? p.simulationNotice : p.realProviderNotice}</FormAlert>
       {error ? <FormAlert tone="error">{error}</FormAlert> : null}
+      {publishedBlocked ? <FormAlert tone="info">{publishedBlocked}</FormAlert> : null}
       <Field id="runPrompt" label={p.inputLabel}>
         <Textarea
           id="runPrompt"
@@ -86,12 +91,27 @@ export function RunAgentForm({
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           maxLength={10_000}
-          disabled={pending}
+          disabled={pending !== null}
         />
       </Field>
-      <Button type="submit" disabled={pending || prompt.trim().length === 0}>
-        {pending ? <Spinner label={p.running} /> : p.submit}
-      </Button>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button
+          type="submit"
+          disabled={pending !== null || prompt.trim().length === 0 || publishedBlocked !== null}
+        >
+          {pending === "published" ? <Spinner label={p.running} /> : p.submit}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          data-testid="test-draft"
+          onClick={() => void dispatch("draft")}
+          disabled={pending !== null || prompt.trim().length === 0}
+        >
+          {pending === "draft" ? <Spinner label={p.running} /> : p.testDraft}
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">{p.testDraftHint}</p>
     </form>
   );
 }

@@ -375,3 +375,24 @@ describe("executeRun - what it sends and how it prices (real-provider paths)", (
     }
   });
 });
+
+describe("executeRun - test runs of the draft (0021)", () => {
+  it("executes the snapshot taken at dispatch, not the (possibly edited) draft", async () => {
+    // The version row returns NOTHING usable: if the executor read it instead
+    // of the snapshot, this run would fail AGENT_CONFIG_INVALID.
+    const { outcome, settles } = await run({
+      run: { ...QUEUED_RUN, is_test: true, config_snapshot: VALID_CONFIG },
+      config: { broken: true },
+    });
+    expect(outcome.ok).toBe(true);
+    expect(settles[0]?.args.p_status).toBe("succeeded");
+  });
+
+  it("a normal run still executes its published version", async () => {
+    const { outcome } = await run({
+      run: { ...QUEUED_RUN, is_test: false, config_snapshot: { broken: true } },
+      config: VALID_CONFIG,
+    });
+    expect(outcome.ok).toBe(true);
+  });
+});

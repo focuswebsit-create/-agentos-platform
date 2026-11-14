@@ -99,6 +99,7 @@ export default async function RunDetailPage(props: PageProps<"/app/runs/[id]">) 
         subtitle={run.createdAt.slice(0, 16).replace("T", " ")}
         actions={
           <span className="flex items-center gap-2">
+            {run.isTest ? <Badge variant="demo">{t.runs.testBadge}</Badge> : null}
             <Badge variant={STATUS_VARIANT[run.status]}>{t.runs.statuses[run.status]}</Badge>
             {live && can(context.role, "run.cancel") ? (
               <CancelRunButton t={t} orgId={context.orgId} runId={run.id} />

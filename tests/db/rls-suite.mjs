@@ -3071,6 +3071,151 @@ try {
     );
     void otherOrg;
   }
+
+  /* ---- 17. test runs of the draft (0021) --------------------------- */
+  g = "17-test-runs";
+  {
+    const owner = await makeUser(m, `tr-owner-${tag}@example.test`);
+    const member = await makeUser(m, `tr-member-${tag}@example.test`);
+    const viewer = await makeUser(m, `tr-viewer-${tag}@example.test`);
+    const outsider = await makeUser(m, `tr-outsider-${tag}@example.test`);
+    const org = await makeOrg(m, `org-tr-${tag}`, owner, 5);
+    await addMember(m, org, member, "member");
+    await addMember(m, org, viewer, "viewer");
+    await makeOrg(m, `org-tr-other-${tag}`, outsider, 5);
+
+    let agent;
+    await act(t, member, async () => {
+      agent = (await t.query(`select public.create_agent($1,'Draft only',null) as id`, [org]))
+        .rows[0].id;
+    });
+    const draftConfig = {
+      role: "נציג",
+      instructions: "ענה בעברית ובקצרה.",
+      provider: "mock",
+      model: "mock:deterministic",
+      maxSpendUsdMicros: 400000,
+    };
+    await act(t, member, () =>
+      t.query(
+        `update public.agent_versions set config_json=$2::jsonb
+         where agent_id=$1 and published_at is null`,
+        [agent, JSON.stringify(draftConfig)],
+      ),
+    );
+
+    let testRun;
+    await expectAllowed(g, "a member can test an agent that was never published", () =>
+      act(t, member, async () => {
+        testRun = (
+          await t.query(`select public.start_test_run($1,'{"prompt":"hi"}'::jsonb) as out`, [agent])
+        ).rows[0].out.run_id;
+      }),
+    );
+    {
+      const r = await m.query(
+        `select r.is_test, r.config_snapshot, r.budget_usd_micros, r.status, v.published_at,
+                (select status from public.usage_reservations where run_id=r.id) as res
+         from public.runs r join public.agent_versions v on v.id = r.agent_version_id
+         where r.id=$1`,
+        [testRun],
+      );
+      const row = r.rows[0];
+      if (
+        row?.is_test === true &&
+        row.config_snapshot?.instructions === draftConfig.instructions &&
+        Number(row.budget_usd_micros) === 400000 &&
+        row.status === "queued" &&
+        row.published_at === null &&
+        row.res === "active"
+      )
+        ok(g, "the test run snapshots the draft, reserves its budget and is marked a test");
+      else
+        bad(
+          g,
+          "the test run snapshots the draft, reserves its budget and is marked a test",
+          JSON.stringify(row),
+        );
+    }
+    // Editing the draft after dispatch must not change what the test runs.
+    await act(t, member, () =>
+      t.query(
+        `update public.agent_versions set config_json = config_json || '{"instructions":"CHANGED instructions"}'::jsonb
+         where agent_id=$1 and published_at is null`,
+        [agent],
+      ),
+    );
+    {
+      const r = await m.query(
+        `select config_snapshot->>'instructions' as i from public.runs where id=$1`,
+        [testRun],
+      );
+      if (r.rows[0].i === draftConfig.instructions)
+        ok(g, "editing the draft after dispatch does not change the snapshot");
+      else bad(g, "editing the draft after dispatch does not change the snapshot", r.rows[0].i);
+    }
+    await expectDenied(
+      g,
+      "a viewer cannot start a test run",
+      () => act(t, viewer, () => t.query(`select public.start_test_run($1,'{}'::jsonb)`, [agent])),
+      "ORG_ACCESS_DENIED",
+    );
+    await expectDenied(
+      g,
+      "an outsider cannot test another org's agent",
+      () =>
+        act(t, outsider, () => t.query(`select public.start_test_run($1,'{}'::jsonb)`, [agent])),
+      "ORG_ACCESS_DENIED",
+    );
+    await expectRows(
+      g,
+      "an outsider cannot see the test run or its snapshot",
+      () => act(t, outsider, () => t.query(`select id from public.runs where id=$1`, [testRun])),
+      0,
+    );
+    {
+      let blank;
+      await act(t, member, async () => {
+        blank = (await t.query(`select public.create_agent($1,'Blank',null) as id`, [org])).rows[0]
+          .id;
+      });
+      await expectDenied(
+        g,
+        "an incomplete draft cannot be tested",
+        () =>
+          act(t, member, () => t.query(`select public.start_test_run($1,'{}'::jsonb)`, [blank])),
+        "AGENT_CONFIG_INVALID",
+      );
+    }
+    await expectDenied(
+      g,
+      "a customer cannot rewrite a run's snapshot",
+      () =>
+        act(t, owner, () =>
+          t.query(`update public.runs set config_snapshot='{}'::jsonb where id=$1`, [testRun]),
+        ),
+      "permission denied",
+    );
+    await expectDenied(
+      g,
+      "a test run without a snapshot is unrepresentable",
+      () => m.query(`update public.runs set config_snapshot=null where id=$1`, [testRun]),
+      "runs_test_has_snapshot",
+    );
+    await expectDenied(
+      g,
+      "anon cannot start a test run",
+      async () => {
+        await t.query("SET ROLE anon");
+        try {
+          await t.query(`select public.start_test_run($1,'{}'::jsonb)`, [agent]);
+        } finally {
+          await t.query("RESET ROLE").catch(() => {});
+        }
+      },
+      "permission denied",
+    );
+  }
 } finally {
   await m.end().catch(() => {});
   await t.end().catch(() => {});

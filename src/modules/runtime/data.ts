@@ -22,6 +22,8 @@ export type RunSummary = {
   errorCode: string | null;
   createdAt: string;
   endedAt: string | null;
+  /** A test of the draft (0021), not a run of a published version. */
+  isTest: boolean;
 };
 
 export type RunStep = {
@@ -60,6 +62,7 @@ type RunRow = {
   error_code: string | null;
   created_at: string;
   ended_at: string | null;
+  is_test?: boolean;
   agents: { name: string } | null;
 };
 
@@ -67,7 +70,9 @@ export async function listRuns(orgId: string, limit = 50): Promise<RunSummary[]>
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("runs")
-    .select("id, agent_id, status, error_code, created_at, ended_at, agents!inner(name)")
+    // `*`: is_test exists only once 0021 is applied; naming it would break
+    // this list on a database that does not have it.
+    .select("*, agents!inner(name)")
     .eq("org_id", orgId)
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -81,6 +86,7 @@ export async function listRuns(orgId: string, limit = 50): Promise<RunSummary[]>
     errorCode: row.error_code,
     createdAt: row.created_at,
     endedAt: row.ended_at,
+    isTest: row.is_test === true,
   }));
 }
 
@@ -89,9 +95,7 @@ export async function getRun(orgId: string, runId: string): Promise<RunDetail | 
 
   const { data: runData, error } = await supabase
     .from("runs")
-    .select(
-      "id, agent_id, agent_version_id, status, error_code, created_at, started_at, ended_at, result_json, agents!inner(name)",
-    )
+    .select("*, agents!inner(name)")
     .eq("org_id", orgId)
     .eq("id", runId)
     .maybeSingle();
@@ -101,6 +105,7 @@ export async function getRun(orgId: string, runId: string): Promise<RunDetail | 
     agent_version_id: string;
     started_at: string | null;
     result_json: { output?: unknown; truncated?: unknown } | null;
+    config_snapshot?: { provider?: unknown } | null;
   };
 
   const { data: versionData } = await supabase
@@ -109,11 +114,16 @@ export async function getRun(orgId: string, runId: string): Promise<RunDetail | 
     .eq("org_id", orgId)
     .eq("id", row.agent_version_id)
     .maybeSingle();
+  const snapshotProvider =
+    row.is_test === true && typeof row.config_snapshot?.provider === "string"
+      ? row.config_snapshot.provider
+      : null;
   const versionProvider =
-    typeof (versionData as { config_json?: { provider?: unknown } } | null)?.config_json
+    snapshotProvider ??
+    (typeof (versionData as { config_json?: { provider?: unknown } } | null)?.config_json
       ?.provider === "string"
       ? ((versionData as { config_json: { provider: string } }).config_json.provider as string)
-      : null;
+      : null);
 
   const { data: stepData } = await supabase
     .from("run_steps")
@@ -145,6 +155,7 @@ export async function getRun(orgId: string, runId: string): Promise<RunDetail | 
     errorCode: row.error_code,
     createdAt: row.created_at,
     endedAt: row.ended_at,
+    isTest: row.is_test === true,
     output: typeof row.result_json?.output === "string" ? row.result_json.output : null,
     truncated: row.result_json?.truncated === true,
     versionProvider,

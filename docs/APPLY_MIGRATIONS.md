@@ -171,6 +171,15 @@ all of group 12's run tests pass unchanged; group 16 covers the new rules).
 After applying it, the billing screen shows the plan catalog from the database
 instead of the planned fallback.
 
+### Then 0021 (test the draft before publishing)
+
+Paste `supabase/migrations/0021_test_runs.sql` after 0020 (it uses 0020's
+`org_entitlements`). Adds `runs.is_test` and `runs.config_snapshot` and the
+`start_test_run` function. Existing rows are untouched. Until it is applied,
+"בדיקת הטיוטה השמורה" answers that the data environment is not ready; every
+other run path keeps working (the application reads runs with `*`, so it does
+not depend on the new columns).
+
 ---
 
 ## If something goes wrong

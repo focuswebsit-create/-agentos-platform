@@ -780,6 +780,7 @@ export const he = {
       yes: "כן",
       no: "לא",
     },
+    testBadge: "בדיקת טיוטה",
     statuses: {
       queued: "בתור",
       running: "רץ",
@@ -792,7 +793,10 @@ export const he = {
       heading: "הרצת בדיקה",
       inputLabel: "קלט",
       inputPlaceholder: "מה לשלוח לסוכן",
-      submit: "הרצה",
+      submit: "הרצת הגרסה המפורסמת",
+      testDraft: "בדיקת הטיוטה השמורה",
+      testDraftHint:
+        "בדיקת טיוטה מריצה את מה ששמרתם לאחרונה, בלי לפרסם. היא נספרת בתקציב כמו כל הרצה. שמרו את הטיוטה לפני הבדיקה.",
       running: "מריצים…",
       needsPublish: "יש לפרסם גרסה לפני הרצה.",
       noProvider:

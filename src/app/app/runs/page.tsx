@@ -86,6 +86,7 @@ export default async function RunsPage() {
                       {run.createdAt.slice(0, 16).replace("T", " ")}
                     </time>
                   </span>
+                  {run.isTest ? <Badge variant="demo">{t.runs.testBadge}</Badge> : null}
                   <Badge variant={STATUS_VARIANT[run.status]}>{t.runs.statuses[run.status]}</Badge>
                 </Link>
               </li>

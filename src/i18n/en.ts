@@ -799,6 +799,7 @@ export const en: Dictionary = {
       yes: "yes",
       no: "no",
     },
+    testBadge: "Draft test",
     statuses: {
       queued: "Queued",
       running: "Running",
@@ -811,7 +812,10 @@ export const en: Dictionary = {
       heading: "Test run",
       inputLabel: "Input",
       inputPlaceholder: "What to send the agent",
-      submit: "Run",
+      submit: "Run the published version",
+      testDraft: "Test the saved draft",
+      testDraftHint:
+        "A draft test runs what you last saved, without publishing it. It counts against the budget like any run. Save the draft before testing.",
       running: "Running…",
       needsPublish: "Publish a version before running.",
       noProvider:
