@@ -6,7 +6,7 @@ sections under **History** are append-only.
 
 **Last updated:** 2026-11-14
 **Branch:** `claude/agentos-p1-infrastructure-9gibn2` (never merged to `main`; no production deploy)
-**Last commit:** see `git log -1` — the Anthropic provider commit that follows `aed5111`
+**Last commit:** `0dbc0da` (runs stuck in QUEUED) — see also `MASTER_DEVELOPMENT_PLAN.md`, `RELEASE_READINESS.md`, `TEST_RESULTS.md`
 
 ---
 
@@ -19,13 +19,39 @@ sections under **History** are append-only.
 | **P0** | Scaffold, CI, RTL marketing site, shells | ✅ Complete, on `main` |
 | **P1** | Auth, organisations, roles, invitations, RLS, admin boundary | ✅ Code complete · RLS proven locally (192 checks) · ⚠️ GoTrue/PostgREST paths verified only by the owner's manual use of the preview |
 | **P2** | Agent Studio, versions, templates | 🟡 Mostly complete — drafts, publish, immutable versions, history, 4 starter templates, Super Admin template publishing. **Missing:** restore an earlier agent version, test-before-publish on the draft, more domain templates |
-| **P3** | Runtime, real provider, usage ledger | 🟡 Runs, budget reservation, settlement, sweeper, usage ledger, simulation provider, **Anthropic provider (new, mock-tested only)**. **Missing:** durable execution (Inngest), tool calls, conversations/memory, streaming, live Anthropic verification |
+| **P3** | Runtime, real provider, usage ledger | 🟡 Runs with atomic claim, recovery kick and stale-run recovery, budget reservation, settlement, usage ledger, simulation provider, Anthropic provider (mock-tested only, gated by `AGENTOS_ENABLE_LIVE_AI`). **Missing:** durable execution (Inngest), tool calls, conversations/memory, streaming, live Anthropic verification |
 | **P4** | Teams, knowledge, approvals, channels, automations | ⬜ Not started — Web Chat, WhatsApp Business API, triggers, handoff, approvals |
 | **P5** | Subscriptions (sandbox only), quotas, invoices | ⬜ Not started |
 | **P6** | Super Admin | 🟡 Organisations, usage, audit log, templates, enforced suspension. **Missing:** incidents/alerts, live AAL2 verification |
 | **P7** | Security audit, E2E with test accounts, launch readiness | ⬜ Not started |
 
-## Last milestone — Agent Studio runs on a real provider
+## Latest milestone — runs no longer stall in QUEUED (`0dbc0da`)
+
+Root causes found for MARKET's run sitting "בתור" with no trace:
+
+1. **Every Studio-published agent would have failed** once executed: published
+   `config_json` has no `name`, and the executor validated it with the publish
+   schema, which requires one. Fixed with `RuntimeAgentConfigSchema`.
+2. **Silent exits before any write.** A service-role key the database rejects
+   made the executor return `RUN_NOT_FOUND` and write nothing — queued forever,
+   budget reserved. Now `RUNTIME_DB_UNAVAILABLE`, logged by code.
+3. **No recovery on previews.** If `after()` was cut short nothing retried, and
+   Vercel Cron (the sweeper) only runs on Production.
+4. **The simulation notice** was shown whenever any provider was enabled,
+   not when the run used it.
+
+Fix: atomic claim (one executor per run), settle on every path after the
+claim, an idempotent recovery kick from the run page
+(`POST /api/runs/:id/execute`), lazy org-scoped stale-run recovery, live run
+page with explanations, usage and a runtime-health panel for owners/admins,
+`AGENTOS_ENABLE_LIVE_AI` required before billed calls, and migration 0019
+(idempotent `settle_run`, **not applied**).
+
+Which of causes 1–3 hit the MARKET run on the preview cannot be determined
+from here (no Vercel log access); the fix addresses all three, and the health
+panel will say which, if any, remains.
+
+## Previous milestone — Agent Studio runs on a real provider
 
 Three faults stood between "Agent Studio" and a working agent:
 
@@ -113,10 +139,9 @@ at the network proxy. Commit build status is read from GitHub commit statuses.
 
 ## Next task
 
-1. Owner sets blocker 1 → verify simulated save → publish → run on the preview.
-2. Agent Studio completion: restore an earlier version; run the DRAFT in the
-   playground before publishing (test-before-publish).
-3. P4 start: Web Chat channel and conversations with memory (ADR first).
+1. Owner: `RELEASE_READINESS.md` §7 (preview env vars, run MARKET on Simulation, apply 0019).
+2. Agent Studio: duplicate agent, restore an earlier version, business goals field.
+3. Then `MASTER_DEVELOPMENT_PLAN.md` in order.
 
 ---
 

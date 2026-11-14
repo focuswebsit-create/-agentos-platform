@@ -274,6 +274,8 @@ test("agent, template and run routes are closed to an unauthenticated, CSRF-less
     request.put(`/api/agents/${id}/draft`, { data: { orgId: id, config: {} } }),
     request.post(`/api/agents/${id}/publish`, { data: { orgId: id } }),
     request.post(`/api/agents/${id}/archive`, { data: { orgId: id, archived: true } }),
+    request.post(`/api/agents/${id}/restore`, { data: { orgId: id, versionId: id } }),
+    request.post(`/api/agents/${id}/duplicate`, { data: { orgId: id } }),
     request.post(`/api/templates/${id}/install`, { data: { orgId: id } }),
     request.post(`/api/agents/${id}/run`, { data: { orgId: id, prompt: "hello" } }),
     request.post(`/api/runs/${id}/cancel`, { data: { orgId: id } }),

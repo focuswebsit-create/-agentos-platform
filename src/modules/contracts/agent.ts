@@ -26,6 +26,8 @@ export const AgentConfigSchema = z.object({
   name: z.string().trim().min(2).max(80),
   role: z.string().trim().min(2).max(120),
   instructions: z.string().trim().min(10).max(20_000),
+  /** What the business wants from this agent. Optional; sent to the model when set. */
+  goals: z.string().trim().max(2_000).default(""),
   provider: z.string().min(1),
   model: z.string().min(1),
   tools: z.array(ToolGrantSchema).max(20),
@@ -90,6 +92,7 @@ export type AgentVersion = z.infer<typeof AgentVersionSchema>;
 export const AgentDraftConfigSchema = z.object({
   role: z.string().trim().max(120).default(""),
   instructions: z.string().trim().max(20_000).default(""),
+  goals: z.string().trim().max(2_000).default(""),
   provider: z.string().trim().max(64).default(""),
   model: z.string().trim().max(120).default(""),
   tools: z.array(ToolGrantSchema).max(20).default([]),

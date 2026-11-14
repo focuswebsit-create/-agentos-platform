@@ -664,6 +664,15 @@ export const en: Dictionary = {
       instructionsPlaceholder:
         "What the agent should do, in which language, and what it must not do",
       instructionsHint: "At least 10 characters before it can be published.",
+      goalsLabel: "Business goals",
+      goalsPlaceholder:
+        "For example: book meetings with warm leads, answer pricing questions, hand off to a person when needed",
+      goalsHint: "Optional. Sent to the model together with the instructions.",
+      restoreVersion: "Restore to draft",
+      restoring: "Restoring…",
+      restored: "Version {n} was copied into the draft. Review it and publish to make it live.",
+      duplicate: "Duplicate agent",
+      duplicating: "Duplicating…",
       providerLabel: "Provider",
       modelLabel: "Model",
       providerNotConfigured: "not configured",

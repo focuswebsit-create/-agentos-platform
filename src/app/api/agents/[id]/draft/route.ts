@@ -4,6 +4,7 @@ import { createSupabaseServerClient } from "@/modules/supabase/server";
 import { guardApi } from "@/modules/api/guard";
 import { AgentDraftConfigSchema } from "@/modules/contracts";
 import { mapDatabaseError, okJson, problem } from "@/modules/api/respond";
+import { writeDraft } from "@/modules/agents/drafts";
 
 const SaveDraftSchema = z.object({
   orgId: z.uuid(),
@@ -43,22 +44,14 @@ export async function PUT(request: NextRequest, context: RouteContext<"/api/agen
   if (!guard.ok) return guard.response;
 
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from("agent_versions")
-    .update({ config_json: parsed.data.config })
-    .eq("agent_id", id)
-    .eq("org_id", guard.context.orgId)
-    .is("published_at", null)
-    .select("id")
-    .maybeSingle();
-
-  if (error) {
-    const mapped = mapDatabaseError(error);
+  const written = await writeDraft(supabase, guard.context.orgId, id, parsed.data.config);
+  if (!written.ok) {
+    if (written.reason === "not_found") {
+      return problem("ORG_ACCESS_DENIED", "לא נמצאה טיוטה שניתן לשמור.", guard.requestId);
+    }
+    const mapped = mapDatabaseError(written.error);
     return problem(mapped.code, mapped.message, guard.requestId);
   }
-  if (!data) {
-    return problem("ORG_ACCESS_DENIED", "לא נמצאה טיוטה שניתן לשמור.", guard.requestId);
-  }
 
-  return okJson({ versionId: (data as { id: string }).id });
+  return okJson({ versionId: written.versionId });
 }

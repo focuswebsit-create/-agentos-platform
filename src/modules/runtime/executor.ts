@@ -66,8 +66,10 @@ type VersionRow = { config_json: unknown };
  * place the model is guaranteed to see, and so the one place a secret must
  * never be.
  */
-export function buildSystemPrompt(role: string, instructions: string): string {
-  return `Your role: ${role.trim()}\n\n${instructions.trim()}`;
+export function buildSystemPrompt(role: string, instructions: string, goals = ""): string {
+  const parts = [`Your role: ${role.trim()}`, instructions.trim()];
+  if (goals.trim()) parts.push(`Business goals:\n${goals.trim()}`);
+  return parts.join("\n\n");
 }
 
 /**
@@ -210,7 +212,7 @@ export async function executeRun(
 
     const result: ProviderResult = await provider.complete({
       model: config.model,
-      systemPrompt: buildSystemPrompt(config.role, config.instructions),
+      systemPrompt: buildSystemPrompt(config.role, config.instructions, config.goals),
       userInput: prompt,
       maxSteps: config.maxSteps,
       maxSpendUsdMicros: Number(run.budget_usd_micros),

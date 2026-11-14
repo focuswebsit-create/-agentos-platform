@@ -71,7 +71,9 @@ export function AgentEditor({
 
   const [error, setError] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
-  const [pending, setPending] = React.useState<"save" | "publish" | "archive" | null>(null);
+  const [pending, setPending] = React.useState<
+    "save" | "publish" | "archive" | "restore" | "duplicate" | null
+  >(null);
 
   const set = <K extends keyof AgentDraftConfig>(key: K, value: AgentDraftConfig[K]) =>
     setConfig((prev) => ({ ...prev, [key]: value }));
@@ -140,6 +142,38 @@ export function AgentEditor({
     }
     setNotice(e.published.replace("{n}", String(res.data.version)));
     router.refresh();
+  }
+
+  async function restoreVersion(versionId: string, version: number) {
+    setError(null);
+    setNotice(null);
+    setPending("restore");
+    const res = await sendJson(`/api/agents/${agent.id}/restore`, "POST", { orgId, versionId });
+    setPending(null);
+    if (!res.ok) {
+      setError(res.message ?? t.auth.errors.generic);
+      return;
+    }
+    setNotice(e.restored.replace("{n}", String(version)));
+    // The editor's state was initialised from the old draft; reload it from
+    // the server so what is on screen is what is stored.
+    router.refresh();
+    window.location.reload();
+  }
+
+  async function duplicate() {
+    setError(null);
+    setNotice(null);
+    setPending("duplicate");
+    const res = await sendJson<{ id: string }>(`/api/agents/${agent.id}/duplicate`, "POST", {
+      orgId,
+    });
+    if (!res.ok) {
+      setPending(null);
+      setError(res.message ?? t.auth.errors.generic);
+      return;
+    }
+    router.push(`/app/agents/${res.data.id}`);
   }
 
   async function toggleArchive() {
@@ -218,6 +252,18 @@ export function AgentEditor({
               onChange={(ev) => set("instructions", ev.target.value)}
               disabled={!editable}
               maxLength={20_000}
+            />
+          </Field>
+
+          <Field id="agentGoals" label={e.goalsLabel} hint={e.goalsHint}>
+            <Textarea
+              id="agentGoals"
+              className="min-h-24"
+              placeholder={e.goalsPlaceholder}
+              value={config.goals}
+              onChange={(ev) => set("goals", ev.target.value)}
+              disabled={!editable}
+              maxLength={2_000}
             />
           </Field>
 
@@ -309,6 +355,16 @@ export function AgentEditor({
             {pending === "publish" ? <Spinner label={e.publishing} /> : e.publish}
           </Button>
         ) : null}
+        {canEdit ? (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void duplicate()}
+            disabled={pending !== null}
+          >
+            {pending === "duplicate" ? <Spinner label={e.duplicating} /> : e.duplicate}
+          </Button>
+        ) : null}
         {canArchive ? (
           <Button
             type="button"
@@ -339,6 +395,17 @@ export function AgentEditor({
                 <span className="flex items-center gap-2">
                   {v.id === agent.activeVersionId ? (
                     <Badge variant="secondary">{e.activeBadge}</Badge>
+                  ) : null}
+                  {editable ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => void restoreVersion(v.id, v.version)}
+                      disabled={pending !== null}
+                    >
+                      {pending === "restore" ? <Spinner label={e.restoring} /> : e.restoreVersion}
+                    </Button>
                   ) : null}
                   <time
                     dateTime={v.publishedAt}
