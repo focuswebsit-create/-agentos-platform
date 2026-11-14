@@ -44,7 +44,7 @@ test.describe("mobile 375px has no horizontal overflow", () => {
   });
 });
 
-test("Super Admin is hidden (404) when ADMIN_SHELL_PREVIEW is off", async ({ page }) => {
+test("Super Admin is hidden (404) for anyone who is not a platform admin", async ({ page }) => {
   for (const route of ["/admin", "/admin/organizations", "/admin/settings"]) {
     const res = await page.goto(route);
     expect(res?.status(), route).toBe(404);

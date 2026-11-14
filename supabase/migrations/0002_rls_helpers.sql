@@ -213,6 +213,55 @@ end;
 $$;
 
 -- -----------------------------------------------------------------------------
+-- log_platform_audit — audit writer for the platform-admin boundary
+--
+-- log_audit() derives the actor from auth.uid(). The platform-admin module
+-- connects with the secret key and therefore has NO JWT, so auth.uid() is null
+-- and every admin action would be recorded with an unknown actor — which is
+-- precisely the opposite of what SUPER_ADMIN.md's "audit with reason/time" and
+-- SECURITY.md 6 require.
+--
+-- This variant takes the actor explicitly. It is granted ONLY to service_role,
+-- never to anon or authenticated: a caller able to name any actor would be
+-- able to pin their actions on someone else.
+-- -----------------------------------------------------------------------------
+
+create or replace function public.log_platform_audit(
+  p_actor_user_id uuid,
+  p_action        text,
+  p_entity_type   text,
+  p_org_id        uuid default null,
+  p_entity_id     uuid default null,
+  p_metadata      jsonb default '{}'::jsonb
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_id uuid;
+begin
+  if p_actor_user_id is null then
+    raise exception 'PLATFORM_AUDIT_REQUIRES_ACTOR'
+      using errcode = 'not_null_violation',
+            detail = 'A platform-admin audit row must name the acting administrator.';
+  end if;
+
+  insert into public.audit_events (
+    org_id, actor_user_id, actor_type, action, entity_type, entity_id, metadata_redacted
+  )
+  values (
+    p_org_id, p_actor_user_id, 'platform_admin', p_action, p_entity_type, p_entity_id,
+    coalesce(p_metadata, '{}'::jsonb)
+  )
+  returning id into v_id;
+
+  return v_id;
+end;
+$$;
+
+-- -----------------------------------------------------------------------------
 -- Execute privileges
 --
 -- EXECUTE on a function defaults to PUBLIC, so every function is revoked first
@@ -276,4 +325,13 @@ grant execute on function public.org_seat_usage(uuid) to authenticated;
 -- from exposing log_audit to ordinary sessions, which remains closed.
 grant execute on function public.log_audit(
   uuid, public.actor_type, text, text, uuid, jsonb
+) to service_role;
+
+-- Naming an arbitrary actor is a privilege reserved for the trusted internal
+-- identity. anon and authenticated must never reach this.
+revoke execute on function public.log_platform_audit(
+  uuid, text, text, uuid, uuid, jsonb
+) from public, anon, authenticated;
+grant execute on function public.log_platform_audit(
+  uuid, text, text, uuid, uuid, jsonb
 ) to service_role;

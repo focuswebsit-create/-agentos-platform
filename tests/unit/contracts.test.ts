@@ -122,7 +122,28 @@ describe("Error taxonomy", () => {
   it("contains the API_CONTRACT.md codes", () => {
     expect(ERROR_CODES).toContain("USAGE_LIMIT_REACHED");
     expect(ERROR_CODES).toContain("BILLING_NOT_CONFIGURED");
-    expect(ERROR_CODES).toHaveLength(14);
+  });
+
+  it("contains the P1 auth and tenancy codes", () => {
+    // API_CONTRACT.md's taxonomy predates authentication, so P1 adds these.
+    // Folding them into AUTH_REQUIRED or ORG_ACCESS_DENIED would make
+    // genuinely different failures indistinguishable to a client.
+    for (const code of [
+      "MFA_REQUIRED",
+      "INVITATION_INVALID",
+      "ORG_SLUG_TAKEN",
+      "EMAIL_NOT_VERIFIED",
+      "STALE_ORG_CONTEXT",
+      "CSRF_INVALID",
+      "VALIDATION_FAILED",
+    ]) {
+      expect(ERROR_CODES).toContain(code);
+    }
+  });
+
+  it("has no duplicates and a known size, so a code is never added by accident", () => {
+    expect(new Set(ERROR_CODES).size).toBe(ERROR_CODES.length);
+    expect(ERROR_CODES).toHaveLength(21);
   });
 
   it("validates the error envelope", () => {

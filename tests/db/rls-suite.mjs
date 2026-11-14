@@ -693,6 +693,53 @@ try {
     );
   }
 
+  /* ---- 8b. platform audit writer --------------------------------- */
+  g = "8b-platform-audit";
+  await act(t, memberA, async () => {
+    await expectDenied(
+      g,
+      "authenticated cannot EXECUTE log_platform_audit (would let anyone name any actor)",
+      () =>
+        t.query(`select public.log_platform_audit($1,'forged','organization',$2)`, [memberA, orgA]),
+      "permission denied",
+    );
+  });
+  await expectAllowed(g, "service_role CAN write a platform audit row", async () => {
+    await p.query("SET ROLE service_role");
+    await p.query(`select public.log_platform_audit($1,'admin.read','platform_admins',null)`, [
+      ownerA,
+    ]);
+    await p.query("RESET ROLE");
+  });
+  {
+    const r = await m.query(
+      `select actor_user_id, actor_type from public.audit_events
+        where action='admin.read' order by created_at desc limit 1`,
+    );
+    if (r.rows[0]?.actor_user_id === ownerA && r.rows[0]?.actor_type === "platform_admin") {
+      ok(g, "the audit row names the acting administrator, not NULL");
+    } else {
+      bad(
+        g,
+        "the audit row names the acting administrator",
+        `got actor_user_id=${r.rows[0]?.actor_user_id} actor_type=${r.rows[0]?.actor_type}`,
+      );
+    }
+  }
+  await expectDenied(
+    g,
+    "a platform audit row without an actor is refused",
+    async () => {
+      await p.query("SET ROLE service_role");
+      try {
+        await p.query(`select public.log_platform_audit(null,'x','y',null)`);
+      } finally {
+        await p.query("RESET ROLE").catch(() => {});
+      }
+    },
+    "PLATFORM_AUDIT_REQUIRES_ACTOR",
+  );
+
   /* ---- 9. service_role boundary ---------------------------------- */
   g = "9-service-role";
   await expectDenied(

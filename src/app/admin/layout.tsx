@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { ShieldIcon } from "lucide-react";
 import { AdminNav } from "@/components/admin-shell/admin-nav";
 import { LogoMark } from "@/components/shared/logo";
 import { Notice } from "@/components/shared/notice";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { Badge } from "@/components/ui/badge";
+import { requirePlatformAdmin } from "@/modules/platform-admin/guard";
 import { getDictionary } from "@/i18n";
 
 const t = getDictionary();
@@ -16,11 +18,32 @@ export const metadata: Metadata = {
 };
 
 /**
- * Super Admin shell — a separate boundary from the customer `/app`.
- * Reachable only when ADMIN_SHELL_PREVIEW=true (see src/proxy.ts).
- * No data access, no mutations. Platform-admin auth + MFA arrives in P1/P6.
+ * Never prerendered, never cached.
+ *
+ * Every screen under here is resolved against the signed-in user and their
+ * active organisation, so a shared prerendered copy would be one tenant's data
+ * served to another. `cacheComponents` is on for the marketing site, which
+ * benefits from it; authenticated routes opt out explicitly.
  */
-export default function AdminLayout({ children }: LayoutProps<"/admin">) {
+export const instant = false;
+
+/**
+ * Super Admin shell — a separate boundary from the customer `/app`.
+ *
+ * P0 hid this behind an environment variable. It is now gated by a real
+ * platform-scoped identity: an active row in platform_admins, plus a verified
+ * second factor when that row requires one. Being an owner of every customer
+ * organisation still does not get you in (SUPER_ADMIN.md "Identity boundary").
+ *
+ * Every failure renders 404, not 403. A 403 would confirm that the surface
+ * exists and that the prober found the right door.
+ *
+ * This is the boundary only. The dashboards behind it are P6, so the screens
+ * stay truthfully empty rather than showing invented numbers.
+ */
+export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
+  const guard = await requirePlatformAdmin();
+  if (!guard.ok) notFound();
   return (
     <div className="min-h-dvh bg-background">
       <div className="h-1 bg-admin" aria-hidden />

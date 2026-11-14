@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRightIcon, Building2Icon } from "lucide-react";
+import { redirect } from "next/navigation";
+import { ArrowRightIcon } from "lucide-react";
 import { AppMobileNav } from "@/components/app-shell/app-mobile-nav";
 import { AppNavList, type AppSidebarLabels } from "@/components/app-shell/app-sidebar";
-import { DemoBadge } from "@/components/shared/demo-badge";
+import { WorkspaceMenu, type WorkspaceOption } from "@/components/app-shell/workspace-menu";
 import { Logo } from "@/components/shared/logo";
-import { Notice } from "@/components/shared/notice";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
+import { resolveOrgContext } from "@/modules/tenancy/context";
 import { getDictionary } from "@/i18n";
 
 const t = getDictionary();
@@ -17,14 +18,50 @@ export const metadata: Metadata = {
 };
 
 /**
- * Customer workspace shell. P0: no auth, no org, no data — every screen is a
- * truthful empty state. P1 adds session + org membership checks here.
+ * Never prerendered, never cached.
+ *
+ * Every screen under here is resolved against the signed-in user and their
+ * active organisation, so a shared prerendered copy would be one tenant's data
+ * served to another. `cacheComponents` is on for the marketing site, which
+ * benefits from it; authenticated routes opt out explicitly.
  */
-export default function AppLayout({ children }: LayoutProps<"/app">) {
+export const instant = false;
+
+/**
+ * Customer workspace shell.
+ *
+ * The proxy has already turned away requests with no session, but this is a
+ * second, independent check: a layout that trusted the proxy alone would
+ * render tenant data if the matcher were ever mis-edited.
+ *
+ * The demo banner and DEMO badges are gone from here. Everything inside this
+ * shell is now bound to a real organisation, and labelling real data as a
+ * demo would be as misleading as the reverse.
+ */
+export default async function AppLayout({ children }: LayoutProps<"/app">) {
+  const resolution = await resolveOrgContext();
+
+  if (resolution.status === "unauthenticated") redirect("/sign-in?next=/app");
+  if (resolution.status === "no_organization") redirect("/onboarding");
+
+  const { context } = resolution;
+
   const labels: AppSidebarLabels = {
     nav: t.app.nav,
     groups: t.app.navGroups,
     ariaLabel: t.app.workspace,
+  };
+
+  const options: WorkspaceOption[] = context.memberships.map((m) => ({
+    orgId: m.orgId,
+    orgName: m.orgName,
+    role: m.role,
+  }));
+
+  const current: WorkspaceOption = {
+    orgId: context.orgId,
+    orgName: context.orgName,
+    role: context.role,
   };
 
   return (
@@ -34,15 +71,12 @@ export default function AppLayout({ children }: LayoutProps<"/app">) {
           <Logo href="/app" label={t.common.brand} />
         </div>
         <div className="px-3 pt-4">
-          <div className="flex items-center gap-2.5 rounded-xl border border-sidebar-border bg-card px-3 py-2.5">
-            <span className="flex size-8 items-center justify-center rounded-lg bg-accent text-accent-foreground">
-              <Building2Icon aria-hidden className="size-4" />
-            </span>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{t.app.workspace}</p>
-              <DemoBadge label={t.common.demo} className="mt-0.5" />
-            </div>
-          </div>
+          <WorkspaceMenu
+            current={current}
+            options={options}
+            roleLabels={t.team.roles}
+            signOutLabel={t.auth.signOut}
+          />
         </div>
         <div className="flex-1 overflow-y-auto px-3 py-5">
           <AppNavList labels={labels} />
@@ -60,7 +94,7 @@ export default function AppLayout({ children }: LayoutProps<"/app">) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b bg-background/80 px-4 backdrop-blur-xl sm:px-6">
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             <AppMobileNav
               labels={labels}
               brand={t.common.brand}
@@ -68,12 +102,11 @@ export default function AppLayout({ children }: LayoutProps<"/app">) {
               closeLabel={t.common.closeMenu}
             />
             <Logo href="/app" label={t.common.brand} className="lg:hidden" />
-            <span className="hidden text-sm text-muted-foreground lg:inline">
-              {t.app.workspace}
+            <span className="hidden truncate text-sm text-muted-foreground lg:inline">
+              {context.orgName}
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <DemoBadge label={t.common.demo} />
             <ThemeToggle label={t.common.theme.toggle} />
           </div>
         </header>
@@ -81,7 +114,6 @@ export default function AppLayout({ children }: LayoutProps<"/app">) {
           id="main"
           className="mx-auto w-full max-w-6xl flex-1 space-y-6 px-4 py-6 sm:px-6 lg:py-8"
         >
-          <Notice variant="demo">{t.app.demoBanner}</Notice>
           {children}
         </main>
       </div>

@@ -1,14 +1,15 @@
 import { z } from "zod";
 
 /**
- * Server-side environment parsing. Only non-secret flags exist in P0.
- * Never add secrets with a NEXT_PUBLIC_ prefix.
+ * Server-side environment parsing. Never add secrets with a NEXT_PUBLIC_ prefix.
+ *
+ * P0's ADMIN_SHELL_PREVIEW flag is gone. It hid /admin behind an environment
+ * variable because there was no authentication yet; P1 replaces it with a real
+ * platform-admin check (an active row in platform_admins plus AAL2), so a flag
+ * that could expose the surface by being set to the wrong value no longer
+ * exists to be set wrongly.
  */
 const ServerEnvSchema = z.object({
-  ADMIN_SHELL_PREVIEW: z
-    .enum(["true", "false"])
-    .optional()
-    .transform((v) => v === "true"),
   NEXT_PUBLIC_SITE_URL: z.url().optional(),
 });
 
@@ -16,18 +17,15 @@ export type ServerEnv = z.infer<typeof ServerEnvSchema>;
 
 export function parseServerEnv(source: Record<string, string | undefined>): ServerEnv {
   const result = ServerEnvSchema.safeParse({
-    ADMIN_SHELL_PREVIEW: source.ADMIN_SHELL_PREVIEW || undefined,
     NEXT_PUBLIC_SITE_URL: source.NEXT_PUBLIC_SITE_URL || undefined,
   });
-  // Fail closed: an invalid value never enables the admin shell.
-  if (!result.success) return { ADMIN_SHELL_PREVIEW: false, NEXT_PUBLIC_SITE_URL: undefined };
+  // Fail closed: an unparseable value is treated as absent, never as valid.
+  if (!result.success) return { NEXT_PUBLIC_SITE_URL: undefined };
   return result.data;
 }
 
-export function isAdminShellPreviewEnabled(
-  source: Record<string, string | undefined> = process.env,
-): boolean {
-  return parseServerEnv(source).ADMIN_SHELL_PREVIEW;
+export function getSiteUrl(source: Record<string, string | undefined> = process.env) {
+  return parseServerEnv(source).NEXT_PUBLIC_SITE_URL;
 }
 
 /* -------------------------------------------------------------------------- */
