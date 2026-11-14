@@ -40,7 +40,10 @@ export async function proxy(request: NextRequest) {
   const isAdmin = pathname === "/admin" || pathname.startsWith("/admin/");
   // Onboarding is outside /app (the /app layout redirects here when the user
   // has no organisation, so nesting it would loop), but it is just as private.
-  const isOnboarding = pathname === "/onboarding";
+  // Prefix, not equality: /onboarding/start is the second first-run step, and
+  // an exact match would leave it without a session redirect and - worse -
+  // without the CSRF cookie, so its install and create buttons would fail.
+  const isOnboarding = pathname === "/onboarding" || pathname.startsWith("/onboarding/");
 
   if (isAdmin) {
     // Never confirm that the admin surface exists to someone who cannot use it.
@@ -97,6 +100,7 @@ export const config = {
     "/admin",
     "/admin/:path*",
     "/onboarding",
+    "/onboarding/:path*",
     "/invite/:path*",
     "/sign-in",
     "/sign-up",

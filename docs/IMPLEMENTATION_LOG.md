@@ -505,3 +505,69 @@ Super Admin. In production the catalog is empty.
 
 The onboarding wizard ("create from template or blank"), now that both halves
 of P2 exist.
+
+---
+
+## 2026-11-14 — P2 step 4: first-run "template or blank"
+
+### Changed
+
+| File | Change |
+|---|---|
+| `src/app/onboarding/start/page.tsx` | new — the second first-run step |
+| `src/components/onboarding/create-org-form.tsx` | lands on `/onboarding/start`, not `/app` |
+| `src/proxy.ts` | onboarding gate and matcher are prefix-matched |
+| `src/i18n/{he,en}.ts` | `onboardingStart` block; `onboarding.step2/3` reworded, since step 3 said agents arrive "in the next phase" and they have arrived |
+| `tests/unit/admin-boundary.test.ts` | 5 checks on the onboarding boundary |
+| `tests/e2e/smoke.spec.ts` | `/onboarding/start` redirects when signed out |
+
+### Commands and exact results
+
+| Command | Result |
+|---|---|
+| `npm run lint` | exit 0 |
+| `npm run typecheck` | exit 0 |
+| `npm run format:check` | exit 0 |
+| `npm test` | exit 0 — `Tests 145 passed (145)` |
+| `npm run build` | exit 0 |
+| `npm run test:e2e` | exit 0 — `22 passed` |
+| `npm run test:rls` | exit 0 — `PASS 122 FAIL 0 SKIP 0` |
+| secret scan (local) | `findings=0 errors=0 credential_files=0` |
+| gitleaks | not run locally; CI runs it over full history |
+
+### The defect
+
+The proxy gated onboarding on `pathname === "/onboarding"` and its matcher
+listed `/onboarding` with no `:path*`. `/onboarding/start` ran outside the proxy
+altogether: no session redirect, and no CSRF cookie — so the install and create
+buttons on the page would have been refused by the double-submit check, with
+nothing on screen to explain it. The page's own `resolveOrgContext()` would
+still have kept an anonymous visitor out, so this was a broken screen rather
+than an open one, but it was broken in a way that looks like a backend fault.
+
+The regression test was verified by reverting the fix: three assertions failed,
+restored, all 15 pass.
+
+### A deliberate omission, stated rather than skipped
+
+`ROADMAP.md` P2 lists "onboarding wizard with synthetic sample". No sample
+output is shown. No provider is connected, so any output would be text written
+by hand and displayed where a run result goes, which `CLAUDE.md` rule 4 calls a
+production dummy result. The screen states that an agent can be configured and
+published but not run, and that real runs arrive in P3.
+
+### Not verified
+
+Unchanged. No screen in P2 has run against Supabase.
+
+### Next
+
+P2 is complete at the database and UI layers. The next phases split by blocker:
+
+- **P3 (runtime)** needs a real LLM provider key. Owner decision — it means
+  real charges on their account.
+- **P5 (billing)** needs a merchant account and provider selection. Owner
+  decision.
+- **P6 (Super Admin)** is unblocked, and it is also the only path to publishing
+  production templates.
+- **P4 (teams, knowledge, approvals)** is unblocked at the schema layer.

@@ -326,6 +326,36 @@ edited and published but not run.
 
 ---
 
+## First run now ends with an agent, and a proxy hole closed
+
+`/onboarding/start` is the second first-run step: install a template, or create
+a blank agent. Creating an organisation lands there instead of on an empty
+`/app`, and the step redirects to `/app` as soon as the organisation has one
+agent — leaving it reachable afterwards would make it a second, worse copy of
+`/app/templates`.
+
+**There is deliberately no synthetic sample output.** `ROADMAP.md` P2 lists
+"onboarding wizard with synthetic sample", and with no provider connected any
+output would be hand-written text sitting where a run result goes — a
+production dummy result, which `CLAUDE.md` rule 4 forbids. The screen says
+plainly that an agent can be configured and published but not run, that real
+runs arrive in P3, and that no simulated output is shown. A real sample becomes
+possible when a run can produce one.
+
+### The proxy was not covering the new route
+
+`src/proxy.ts` gated onboarding with `pathname === "/onboarding"`, and the
+matcher listed `/onboarding` without `:path*`. `/onboarding/start` therefore ran
+outside the proxy entirely: no session redirect, and — the part that matters —
+no CSRF cookie, so every button on the page would have been refused by the
+double-submit check with nothing on screen explaining why.
+
+Both are prefix-matched now. The regression test was checked the only way such a
+test is worth anything: reverted the fix, watched the three assertions fail,
+restored it.
+
+---
+
 ## Decisions on record
 
 `docs/adr/0001` single app · `0002` admin boundary in P1, dashboards in P6 ·
@@ -353,8 +383,6 @@ chain is proven end to end would build on an untested foundation.
 - **P2: template catalog** — `global_templates`, `global_template_versions`
   and `template_installations`, which deliver the other half of the P2 gate
   ("install copy; unauthorized template editing denied").
-- **P2: the onboarding wizard** — "create from template or blank" as a first-run
-  flow, now that both halves exist.
 - **A production path for the catalog.** Templates are platform content and
   there is no way to publish one except inserting rows by hand until P6's Super
   Admin. In production the catalog is therefore empty, which is the right

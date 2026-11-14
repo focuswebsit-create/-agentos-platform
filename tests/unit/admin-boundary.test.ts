@@ -2,6 +2,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { NextRequest, type NextResponse } from "next/server";
 import { parseServerEnv, getSiteUrl } from "@/config/env";
+import { CSRF_COOKIE } from "@/modules/tenancy/cookie";
 
 /**
  * The request-level auth boundary (src/proxy.ts).
@@ -51,6 +52,10 @@ describe("proxy matcher", () => {
     expect(config.matcher).toContain("/admin");
     expect(config.matcher).toContain("/admin/:path*");
     expect(config.matcher).toContain("/invite/:path*");
+    expect(config.matcher).toContain("/onboarding");
+    // Sub-paths too. /onboarding/start is the second first-run step, and an
+    // entry for /onboarding alone does not match it.
+    expect(config.matcher).toContain("/onboarding/:path*");
   });
 
   it("does not run on marketing routes", () => {
@@ -123,6 +128,28 @@ describe("/app boundary", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("Cache-Control")).toBe("no-store");
   });
+});
+
+describe("/onboarding boundary", () => {
+  // Regression: the gate tested pathname === "/onboarding", so /onboarding/start
+  // was served without a session redirect and, worse, without the CSRF cookie -
+  // every button on it would have been refused by the double-submit check.
+  for (const path of ["/onboarding", "/onboarding/start"]) {
+    it(`${path} redirects a signed-out request to sign-in`, async () => {
+      signedOut();
+      const res = await proxy(new NextRequest(`http://localhost${path}`));
+      expect([302, 307]).toContain(res.status);
+      expect(res.headers.get("location") ?? "").toContain("/sign-in");
+    });
+
+    it(`${path} issues the CSRF cookie to a signed-in visitor`, async () => {
+      signedIn();
+      const res = await proxy(new NextRequest(`http://localhost${path}`));
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Cache-Control")).toBe("no-store");
+      expect(res.headers.getSetCookie().join(";")).toContain(CSRF_COOKIE);
+    });
+  }
 });
 
 describe("server env", () => {

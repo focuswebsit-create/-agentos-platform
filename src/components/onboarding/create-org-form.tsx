@@ -48,7 +48,10 @@ export function CreateOrgForm({ t }: { t: Dictionary }) {
       return;
     }
 
-    router.replace("/app");
+    // Straight to "template or blank": an organisation with no agents has
+    // nothing to show on /app, and the second step redirects back there as
+    // soon as one exists.
+    router.replace("/onboarding/start");
     router.refresh();
   }
 

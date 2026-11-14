@@ -459,8 +459,19 @@ export const en: Dictionary = {
     slugTaken: "That id is taken. Pick another.",
     whatHappens: "What happens next",
     step1: "You get an empty, isolated workspace",
-    step2: "You can invite people and set their permissions",
-    step3: "Building agents opens in the next phase",
+    step2: "You pick a starting template, or start from scratch",
+    step3: "You can invite people and set their permissions",
+  },
+  onboardingStart: {
+    title: "Your first agent",
+    subtitle: "Start from a ready-made template, or from a blank agent if you know what you want.",
+    templatesHeading: "Start from a template",
+    blankHeading: "Start from scratch",
+    blankBody: "An empty agent you configure yourself, step by step.",
+    skip: "Skip to the workspace",
+    noTemplates: "No templates are available right now. You can start from a blank agent.",
+    noRunNotice:
+      "At this stage you can configure and publish an agent, but not run one — no model provider is connected. Real runs arrive in P3, and no simulated run output is shown here.",
   },
   team: {
     title: "Team members",

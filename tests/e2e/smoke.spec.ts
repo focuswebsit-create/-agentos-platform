@@ -19,6 +19,7 @@ const PRIVATE_ROUTES = [
   "/app/agents",
   "/app/agents/00000000-0000-4000-8000-000000000000",
   "/app/templates",
+  "/onboarding/start",
   "/app/runs",
   "/app/billing",
   "/onboarding",
