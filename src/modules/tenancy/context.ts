@@ -27,6 +27,8 @@ export type Membership = {
   orgStatus: "active" | "suspended";
   orgLocale: "he" | "en";
   orgTimezone: string;
+  /** Operator-written, shown to the customer. Null unless suspended. */
+  orgSuspensionReason: string | null;
 };
 
 export type OrgContext = {
@@ -38,6 +40,7 @@ export type OrgContext = {
   orgStatus: "active" | "suspended";
   orgLocale: "he" | "en";
   orgTimezone: string;
+  orgSuspensionReason: string | null;
   /** Every organisation this user belongs to, for the workspace switcher. */
   memberships: readonly Membership[];
   /** True when the cookie named an organisation the user cannot access. */
@@ -59,6 +62,7 @@ type MembershipRow = {
     status: "active" | "suspended";
     locale: "he" | "en";
     timezone: string;
+    suspension_reason: string | null;
   } | null;
 };
 
@@ -82,7 +86,9 @@ export async function listMemberships(): Promise<{
   // the second of the two checks DATA_MODEL.md requires, not a substitute.
   const { data, error } = await supabase
     .from("memberships")
-    .select("org_id, role, organizations!inner(id, slug, name, status, locale, timezone)")
+    .select(
+      "org_id, role, organizations!inner(id, slug, name, status, locale, timezone, suspension_reason)",
+    )
     .eq("user_id", userId)
     .order("created_at", { ascending: true });
 
@@ -103,6 +109,7 @@ export async function listMemberships(): Promise<{
       orgStatus: row.organizations.status,
       orgLocale: row.organizations.locale,
       orgTimezone: row.organizations.timezone,
+      orgSuspensionReason: row.organizations.suspension_reason,
     }));
 
   return { userId, memberships };
@@ -134,6 +141,7 @@ export async function resolveOrgContext(): Promise<OrgResolution> {
       orgStatus: active.orgStatus,
       orgLocale: active.orgLocale,
       orgTimezone: active.orgTimezone,
+      orgSuspensionReason: active.orgSuspensionReason,
       memberships,
       cookieWasStale: Boolean(requested) && !matched,
     },

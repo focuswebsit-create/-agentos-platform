@@ -114,6 +114,26 @@ export default async function AppLayout({ children }: LayoutProps<"/app">) {
           id="main"
           className="mx-auto w-full max-w-6xl flex-1 space-y-6 px-4 py-6 sm:px-6 lg:py-8"
         >
+          {/* SUPER_ADMIN.md requires a warning alongside a suspension. Shown on
+              every page rather than one, because a customer whose runs stop
+              working needs to know why wherever they happen to be, and the
+              reason is operator-written text about the account, not customer
+              content. */}
+          {context.orgStatus === "suspended" ? (
+            <div
+              role="alert"
+              className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+            >
+              <p className="font-medium">{t.app.suspended.title}</p>
+              <p className="mt-1 leading-relaxed">{t.app.suspended.body}</p>
+              {context.orgSuspensionReason ? (
+                <p className="mt-2">
+                  <span className="font-medium">{t.app.suspended.reasonLabel}:</span>{" "}
+                  {context.orgSuspensionReason}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           {children}
         </main>
       </div>

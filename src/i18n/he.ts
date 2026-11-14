@@ -206,6 +206,11 @@ export const he = {
       operate: "הפעלה",
       account: "חשבון",
     },
+    suspended: {
+      title: "סביבת העבודה מושעית",
+      body: "אי אפשר להתחיל הרצות חדשות. שאר הנתונים נגישים לצפייה ולעריכה, ואפשר לייצא אותם.",
+      reasonLabel: "סיבה",
+    },
     overview: {
       title: "סקירה",
       subtitle: "תמונת מצב של סביבת העבודה.",
@@ -354,6 +359,12 @@ export const he = {
         actions: ["השעיית ארגון", "ייצוא מטא־דאטה"],
         privacyNote:
           "המסך מציג מטא־דאטה בלבד. אין כאן כתובות אימייל, הגדרות סוכנים, קלט או פלט של הרצות. גישה לתוכן לקוח דורשת נוהל break-glass שטרם מומש.",
+        suspend: "השעיה",
+        restore: "ביטול השעיה",
+        working: "מעדכנים…",
+        reasonLabel: "סיבת ההשעיה",
+        reasonPlaceholder: "סיבה שתוצג ללקוח",
+        suspendedReason: "סיבה",
         columns: {
           name: "ארגון",
           status: "סטטוס",
@@ -362,6 +373,7 @@ export const he = {
           runs: "הרצות",
           lastRun: "הרצה אחרונה",
           spend: "הוצאה החודש",
+          action: "פעולה",
         },
       },
       subscriptions: {

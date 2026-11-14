@@ -58,6 +58,12 @@ export function mapDatabaseError(message: string | undefined): {
   if (m.includes("SEAT_LIMIT_REACHED")) {
     return { code: "SEAT_LIMIT_REACHED", message: "לא נותרו מושבים פנויים בארגון." };
   }
+  if (m.includes("ORG_SUSPENDED")) {
+    return {
+      code: "ORG_SUSPENDED",
+      message: "סביבת העבודה מושעית ואי אפשר להתחיל הרצות חדשות.",
+    };
+  }
   if (m.includes("USAGE_LIMIT_REACHED")) {
     return {
       code: "USAGE_LIMIT_REACHED",

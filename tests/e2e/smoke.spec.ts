@@ -151,6 +151,9 @@ test("admin write endpoints answer 404 to anyone who is not a platform admin", a
       data: { op: "visibility", visibility: "public" },
     }),
     request.post(`/api/admin/templates/${id}/versions`, { data: { definition: {} } }),
+    request.patch(`/api/admin/organizations/${id}`, {
+      data: { suspended: true, reason: "testing the boundary" },
+    }),
   ])) {
     expect(res.status()).toBe(404);
   }

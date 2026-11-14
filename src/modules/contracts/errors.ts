@@ -72,6 +72,13 @@ export const ERROR_CODES = [
    * discover templates the platform has not released.
    */
   "TEMPLATE_NOT_AVAILABLE",
+
+  /**
+   * P6. The organisation is suspended from new runs. Distinct from
+   * ORG_ACCESS_DENIED because it is something the customer can act on: the
+   * reason is on their own organisation row and shown on every page.
+   */
+  "ORG_SUSPENDED",
 ] as const;
 
 export const ErrorCodeSchema = z.enum(ERROR_CODES);

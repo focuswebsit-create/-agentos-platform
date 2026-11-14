@@ -1030,3 +1030,76 @@ and built, not run.
 2. Multi-step execution.
 3. **Blocked on the owner:** a real provider key, a merchant account, and the
    seven Supabase setup items.
+
+---
+
+## 2026-11-14 — P6 step 3: suspension that suspends something
+
+### The defect
+
+`organizations.status` has existed since 0001. `SUPER_ADMIN.md` lists "suspend
+account from new runs with reason, warning and safety audit" as a safeguard.
+A grep across all fifteen migrations found **no function that read the column**.
+Suspending an organisation changed a word on an admin screen and nothing else:
+the organisation kept dispatching runs and spending money.
+
+### Changed
+
+| File | Change |
+|---|---|
+| `supabase/migrations/0016_suspension.sql` | new — `suspended_at`, `suspension_reason`, a consistency CHECK, a column-privilege assertion, `start_run` replaced with the status check, `set_org_suspended()` |
+| `src/modules/platform-admin/data.ts` | `adminSetOrgSuspended`; the org row carries the reason |
+| `src/app/api/admin/organizations/[id]/route.ts` | new |
+| `src/components/admin-shell/suspend-org-control.tsx` | new |
+| `src/app/admin/organizations/page.tsx` | the action column |
+| `src/modules/tenancy/context.ts` | `orgSuspensionReason` |
+| `src/app/app/layout.tsx` | the customer-facing warning, on every page |
+| `src/modules/contracts/errors.ts`, `src/modules/api/respond.ts`, `API_CONTRACT.md` | `ORG_SUSPENDED` |
+| `tests/db/rls-suite.mjs` | group 13: 15 checks |
+| `tests/e2e/smoke.spec.ts` | the suspension endpoint answers 404 to an anonymous caller |
+
+### Commands and exact results
+
+| Command | Result |
+|---|---|
+| `npm run lint` | exit 0 |
+| `npm run typecheck` | exit 0 |
+| `npm run format:check` | exit 0 |
+| `npm test` | exit 0 — `Tests 183 passed (183)` |
+| `npm run build` | exit 0 |
+| `npm run test:e2e` | exit 0 — `25 passed` |
+| `npm run test:rls` | exit 0 — `PASS 174 FAIL 0 SKIP 0` |
+| secret scan (local) | `findings=0 errors=0 credential_files=0` |
+
+### Decisions
+
+- **Blocks runs only.** Reading, editing and export stay available. The
+  specification says "suspend from new runs" and separately forbids silent
+  deletion of account or content; locking a customer out of their own data
+  would be closer to the second.
+- **The check is under the budget's row lock**, so a suspension committed
+  mid-dispatch cannot be stepped over.
+- **A CHECK ties status, timestamp and reason together.** "Suspended with no
+  reason" is unrepresentable, not merely discouraged.
+- **The reason is readable by members**, and shown on every `/app` page. A
+  workspace that stops working without saying why is an outage.
+- **`service_role` only.** Not an owner action in any role: an organisation
+  that can unsuspend itself is not suspended.
+- **The audit row is written inside the RPC**, in the same transaction as the
+  status change, so `adminSetOrgSuspended` deliberately does *not* call
+  `auditOrRefuse` — that would double the record and open a window where the
+  status changed and the log did not.
+- **`ORG_SUSPENDED` is its own code.** `ORG_ACCESS_DENIED` is not actionable;
+  this is.
+
+### Not verified
+
+The migration has not been applied to Supabase, and no admin screen has run
+against it. The behaviour is proven on the local cluster.
+
+### Next
+
+1. Multi-step execution.
+2. P4 schema: teams, knowledge, approvals.
+3. **Blocked on the owner:** a real provider key, a merchant account, the seven
+   Supabase setup items.

@@ -207,6 +207,11 @@ export const en: Dictionary = {
       operate: "Operate",
       account: "Account",
     },
+    suspended: {
+      title: "This workspace is suspended",
+      body: "New runs cannot be started. Everything else stays readable and editable, and you can still export it.",
+      reasonLabel: "Reason",
+    },
     overview: {
       title: "Overview",
       subtitle: "A snapshot of your workspace.",
@@ -359,6 +364,12 @@ export const en: Dictionary = {
         actions: ["Suspend organization", "Export metadata"],
         privacyNote:
           "Metadata only. No email addresses, agent configurations, or run inputs and outputs. Access to customer content requires a break-glass procedure that is not implemented.",
+        suspend: "Suspend",
+        restore: "Restore",
+        working: "Updating…",
+        reasonLabel: "Suspension reason",
+        reasonPlaceholder: "Reason shown to the customer",
+        suspendedReason: "Reason",
         columns: {
           name: "Organisation",
           status: "Status",
@@ -367,6 +378,7 @@ export const en: Dictionary = {
           runs: "Runs",
           lastRun: "Last run",
           spend: "Spend this month",
+          action: "Action",
         },
       },
       subscriptions: {

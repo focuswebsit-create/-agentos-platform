@@ -2107,6 +2107,193 @@ try {
         );
     }
   }
+
+  /* ---- 13. suspension actually suspends (P6) --------------------- */
+  g = "13-suspension";
+  {
+    const ownerS = await makeUser(m, `susp-owner-${tag}@example.test`);
+    const orgS = await makeOrg(m, `org-susp-${tag}`, ownerS, 10);
+    const adminUser = await makeUser(m, `susp-admin-${tag}@example.test`);
+
+    // A runnable agent, so the block is tested against something that would
+    // otherwise succeed.
+    let agentS;
+    await act(t, ownerS, async () => {
+      agentS = (
+        await t.query(`select public.create_agent($1,$2,null) as id`, [orgS, "Suspended co"])
+      ).rows[0].id;
+    });
+    await m.query(
+      `update public.agent_versions set config_json = $2::jsonb
+       where agent_id=$1 and published_at is null`,
+      [agentS, JSON.stringify({ provider: "mock", model: "m", maxSpendUsdMicros: 1000000 })],
+    );
+    await act(t, ownerS, () => t.query(`select public.publish_agent_version($1)`, [agentS]));
+
+    await expectAllowed(g, "an active org can dispatch", () =>
+      act(t, ownerS, () => t.query(`select public.start_run($1,'{}'::jsonb,null)`, [agentS])),
+    );
+
+    /* -- only the platform may suspend -- */
+    await expectDenied(
+      g,
+      "an owner cannot execute set_org_suspended",
+      () =>
+        act(t, ownerS, () =>
+          t.query(`select public.set_org_suspended($1,$2,true,'abuse')`, [ownerS, orgS]),
+        ),
+      "permission denied",
+    );
+    await expectDenied(
+      g,
+      "an owner cannot write organizations.status directly",
+      () =>
+        act(t, ownerS, () =>
+          t.query(`update public.organizations set status='suspended' where id=$1`, [orgS]),
+        ),
+      "permission denied",
+    );
+    await expectDenied(
+      g,
+      "suspending without a reason is refused",
+      async () => {
+        await p.query("SET ROLE service_role");
+        try {
+          await p.query(`select public.set_org_suspended($1,$2,true,null)`, [adminUser, orgS]);
+        } finally {
+          await p.query("RESET ROLE").catch(() => {});
+        }
+      },
+      "SUSPENSION_REQUIRES_REASON",
+    );
+    await expectDenied(
+      g,
+      "suspending with no acting administrator is refused",
+      async () => {
+        await p.query("SET ROLE service_role");
+        try {
+          await p.query(`select public.set_org_suspended(null,$1,true,'abuse')`, [orgS]);
+        } finally {
+          await p.query("RESET ROLE").catch(() => {});
+        }
+      },
+      "PLATFORM_AUDIT_REQUIRES_ACTOR",
+    );
+
+    /* -- suspension blocks spending, and nothing else -- */
+    await expectAllowed(g, "the platform can suspend with a reason", async () => {
+      await p.query("SET ROLE service_role");
+      try {
+        const r = await p.query(`select public.set_org_suspended($1,$2,true,$3) as s`, [
+          adminUser,
+          orgS,
+          "Payment dispute under review",
+        ]);
+        if (r.rows[0].s !== "suspended") throw new Error(`got ${r.rows[0].s}`);
+      } finally {
+        await p.query("RESET ROLE").catch(() => {});
+      }
+    });
+    await expectDenied(
+      g,
+      "a suspended org cannot dispatch a run",
+      () => act(t, ownerS, () => t.query(`select public.start_run($1,'{}'::jsonb,null)`, [agentS])),
+      "ORG_SUSPENDED",
+    );
+    await expectRows(
+      g,
+      "a suspended org can still READ its own agents",
+      () => act(t, ownerS, () => t.query(`select id from public.agents where org_id=$1`, [orgS])),
+      1,
+    );
+    await expectRows(
+      g,
+      "a suspended org can still edit a draft, so it is not locked out of its data",
+      () =>
+        act(t, ownerS, () =>
+          t.query(
+            `update public.agent_versions set config_json='{"model":"x"}'::jsonb
+             where agent_id=$1 and published_at is null`,
+            [agentS],
+          ),
+        ),
+      1,
+    );
+    {
+      const r = await act(t, ownerS, () =>
+        t.query(
+          `select status, suspension_reason, suspended_at from public.organizations where id=$1`,
+          [orgS],
+        ),
+      );
+      const row = r.rows[0];
+      if (
+        row.status === "suspended" &&
+        row.suspension_reason === "Payment dispute under review" &&
+        row.suspended_at !== null
+      )
+        ok(g, "the customer can read why they were suspended, and when");
+      else
+        bad(
+          g,
+          "the customer can read why they were suspended, and when",
+          `${row.status} / ${row.suspension_reason} / ${row.suspended_at}`,
+        );
+    }
+    {
+      const r = await m.query(
+        `select actor_user_id, action, metadata_redacted ->> 'reason' as reason
+         from public.audit_events where action='admin.org.suspended'
+         order by created_at desc limit 1`,
+      );
+      const row = r.rows[0];
+      if (row && row.actor_user_id === adminUser && row.reason === "Payment dispute under review")
+        ok(g, "the suspension is audited with its actor and its reason");
+      else bad(g, "the suspension is audited with its actor and its reason", JSON.stringify(row));
+    }
+
+    /* -- the three facts move together -- */
+    await expectDenied(
+      g,
+      "suspended with no reason is unrepresentable, even for the schema owner",
+      async () => {
+        const fresh = (
+          await m.query(
+            `insert into public.organizations (slug,name) values ($1,$1) returning id`,
+            [`org-consist-${tag}`],
+          )
+        ).rows[0].id;
+        await m.query(`update public.organizations set status='suspended' where id=$1`, [fresh]);
+      },
+      "organizations_suspension_consistent",
+    );
+
+    /* -- restoring -- */
+    await expectAllowed(g, "the platform can restore", async () => {
+      await p.query("SET ROLE service_role");
+      try {
+        const r = await p.query(`select public.set_org_suspended($1,$2,false,null) as s`, [
+          adminUser,
+          orgS,
+        ]);
+        if (r.rows[0].s !== "active") throw new Error(`got ${r.rows[0].s}`);
+      } finally {
+        await p.query("RESET ROLE").catch(() => {});
+      }
+    });
+    await expectAllowed(g, "a restored org can dispatch again", () =>
+      act(t, ownerS, () => t.query(`select public.start_run($1,'{}'::jsonb,null)`, [agentS])),
+    );
+    {
+      const r = await m.query(
+        `select suspended_at, suspension_reason from public.organizations where id=$1`,
+        [orgS],
+      );
+      if (r.rows[0].suspended_at === null && r.rows[0].suspension_reason === null)
+        ok(g, "restoring clears the reason and the timestamp");
+      else bad(g, "restoring clears the reason and the timestamp", JSON.stringify(r.rows[0]));
+    }
+  }
 } finally {
   await m.end().catch(() => {});
   await t.end().catch(() => {});

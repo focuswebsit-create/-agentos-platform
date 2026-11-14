@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/shared/page-header";
 import { Badge } from "@/components/ui/badge";
+import { SuspendOrgControl } from "@/components/admin-shell/suspend-org-control";
 import { requireAdminOrNotFound } from "@/modules/platform-admin/guard";
 import { adminListOrganizations } from "@/modules/platform-admin/data";
 import { getDictionary } from "@/i18n";
@@ -45,6 +46,7 @@ export default async function AdminOrganizationsPage() {
                   s.columns.runs,
                   s.columns.lastRun,
                   s.columns.spend,
+                  s.columns.action,
                 ].map((label) => (
                   <th key={label} scope="col" className="px-4 py-3 text-start font-medium">
                     {label}
@@ -80,6 +82,18 @@ export default async function AdminOrganizationsPage() {
                   </td>
                   <td dir="ltr" className="px-4 py-3 font-mono">
                     ${(org.spentThisPeriodUsdMicros / 1_000_000).toFixed(2)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <SuspendOrgControl
+                      t={t}
+                      orgId={org.id}
+                      suspended={org.status === "suspended"}
+                    />
+                    {org.suspensionReason ? (
+                      <span className="mt-1 block text-xs text-muted-foreground">
+                        {s.suspendedReason}: {org.suspensionReason}
+                      </span>
+                    ) : null}
                   </td>
                 </tr>
               ))}

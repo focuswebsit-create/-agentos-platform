@@ -40,6 +40,7 @@ export type AdminOrgRow = {
   runCount: number;
   lastRunAt: string | null;
   spentThisPeriodUsdMicros: number;
+  suspensionReason: string | null;
 };
 
 export type AdminUsageRow = {
@@ -136,7 +137,7 @@ export async function adminListOrganizations(
 
   const { data, error } = await db
     .from("organizations")
-    .select("id, slug, name, status, created_at, seat_limit")
+    .select("id, slug, name, status, created_at, seat_limit, suspension_reason")
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -148,6 +149,7 @@ export async function adminListOrganizations(
     status: "active" | "suspended";
     created_at: string;
     seat_limit: number;
+    suspension_reason: string | null;
   }>;
   if (orgs.length === 0) return [];
 
@@ -213,6 +215,7 @@ export async function adminListOrganizations(
     runCount: runCounts.get(o.id) ?? 0,
     lastRunAt: lastRun.get(o.id) ?? null,
     spentThisPeriodUsdMicros: spend.get(o.id) ?? 0,
+    suspensionReason: o.suspension_reason,
   }));
 }
 
@@ -333,4 +336,48 @@ export async function adminAuditLog(admin: PlatformAdmin, limit = 100): Promise<
     entityId: row.entity_id,
     createdAt: row.created_at,
   }));
+}
+
+export type SuspensionResult = { ok: true; status: string } | { ok: false; code: string };
+
+/**
+ * Suspend an organisation from new runs, or restore it.
+ *
+ * `SUPER_ADMIN.md`: "Suspend account from new runs with reason, warning and
+ * safety audit; never silently delete account/content." All four parts are
+ * here, and three of them are in the database rather than this function:
+ * `set_org_suspended()` refuses without a reason, writes the audit row with
+ * the acting administrator, and the CHECK in 0016 makes "suspended with no
+ * reason" unrepresentable.
+ *
+ * Deliberately not a direct UPDATE. The reason, the timestamp and the audit
+ * record have to move with the status, and a route that wrote the column
+ * could omit any of them.
+ */
+export async function adminSetOrgSuspended(
+  admin: PlatformAdmin,
+  input: { orgId: string; suspended: boolean; reason?: string },
+): Promise<SuspensionResult> {
+  const db = createServiceRoleClient();
+
+  const { data, error } = await db.rpc("set_org_suspended", {
+    p_actor_user_id: admin.userId,
+    p_org_id: input.orgId,
+    p_suspended: input.suspended,
+    p_reason: input.reason ?? null,
+  });
+
+  if (error) {
+    const message = error.message ?? "";
+    if (message.includes("SUSPENSION_REQUIRES_REASON"))
+      return { ok: false, code: "REASON_REQUIRED" };
+    if (message.includes("ORG_NOT_FOUND")) return { ok: false, code: "ORG_NOT_FOUND" };
+    return { ok: false, code: "WRITE_FAILED" };
+  }
+
+  // No auditOrRefuse here: set_org_suspended() writes the audit row inside the
+  // same transaction as the status change, so there is no window in which one
+  // happened and the other did not. Auditing again from here would double the
+  // record.
+  return { ok: true, status: String(data) };
 }

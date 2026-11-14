@@ -84,6 +84,13 @@ endpoint cannot be used to confirm that a given agent exists. `AGENT_VERSION_MIS
 and "draft or retired" into one answer, so the install endpoint cannot be used
 to discover templates the platform has not released.
 
+Added in P6:
+
+`ORG_SUSPENDED`. Distinct from `ORG_ACCESS_DENIED` because the customer can act
+on it: the reason is stored on their own organisation row and shown on every
+page of `/app`. Suspension blocks new runs only — reading, editing and export
+stay available, so a suspended customer is not locked out of their own data.
+
 `INVITATION_INVALID` is deliberately **one** code for every invitation failure —
 unknown token, expired, revoked, already used, or addressed to someone else.
 Distinguishing them would turn the accept endpoint into an oracle for

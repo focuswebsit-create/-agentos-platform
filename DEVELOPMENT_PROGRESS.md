@@ -578,6 +578,46 @@ instead of on customer screens would be the wrong trade.
 
 ---
 
+## Suspension was cosmetic
+
+`organizations.status` has existed since migration 0001 and `SUPER_ADMIN.md`
+lists suspension as a safety control. **Nothing checked the column.** A
+suspended organisation could dispatch runs and spend money exactly as before;
+the only effect of suspending one was a different word on an admin screen.
+
+Migration 0016 closes it, and adds the two things the safeguard names that the
+schema could not express: a reason and a timestamp. A CHECK ties all three
+together, so "suspended with no reason" is unrepresentable rather than merely
+discouraged — that is precisely the record an audit asks for and cannot find.
+
+**What suspension does and does not do.** It blocks new runs. It does not block
+reading, editing drafts or managing the team. `SUPER_ADMIN.md` says "suspend
+account from new runs" and separately forbids silently deleting account or
+content; a suspension that locked a customer out of their own data would be
+closer to the second than the first. A suspended organisation can see
+everything it had, fix whatever caused the suspension, and export. It simply
+cannot spend money.
+
+The check sits under the same row lock as the budget, so a suspension committed
+while a dispatch is in flight cannot be stepped over.
+
+**The customer is told.** `suspension_reason` is readable by members, not
+admin-only, and every `/app` page shows it. A workspace that stops working
+without saying why is an outage, not a suspension.
+
+**Only the platform can do it.** `set_org_suspended()` is `service_role` only —
+not an owner action in any role, because an organisation that can unsuspend
+itself is not suspended. It refuses without a reason and without a named
+administrator, and writes the audit row in the same transaction as the status
+change, so there is no window where one happened and the other did not.
+
+Fifteen new checks, including that an owner can neither call the function nor
+write the column, that a suspended organisation is blocked from dispatch but
+still reads and edits, and that restoring clears the reason and the timestamp.
+**`PASS 174 FAIL 0 SKIP 0`.**
+
+---
+
 ## Decisions on record
 
 `docs/adr/0001` single app · `0002` admin boundary in P1, dashboards in P6 ·
