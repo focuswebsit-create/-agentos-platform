@@ -9,6 +9,22 @@ All customer APIs authenticate user and check org membership and entitlement on 
 | POST | `/api/orgs` | Create workspace with defaults |
 | POST | `/api/invitations` | Authorized invite subject to seat entitlement |
 
+## Auth and tenancy (P1)
+| Method | Route | Purpose |
+|---|---|---|
+| GET | `/auth/callback` | Landing point for every emailed link (confirm, recovery, invite). Exchanges `code` or `token_hash`+`type` for a session |
+| POST | `/auth/sign-out` | Ends the session and clears the active-organisation cookie. POST only |
+| POST | `/api/orgs/switch` | Change the active workspace. Membership re-verified before the cookie is written |
+| POST | `/api/invitations/:id/revoke` | Status transition to `revoked`; never a DELETE |
+| POST | `/api/invitations/accept` | Accept by token. Takes the SHA-256 digest, never the raw token |
+| PATCH | `/api/memberships/:userId` | Change a member's role |
+| DELETE | `/api/memberships/:userId` | Remove a member from the organisation |
+
+Every state-changing route above verifies, in order: a session, membership,
+`Origin`/`Sec-Fetch-Site`, a double-submit CSRF token, and that the submitted
+`orgId` matches the active one (`STALE_ORG_CONTEXT`). RLS re-checks all of it
+in the database.
+
 ## Product
 | Method | Route | Purpose |
 |---|---|---|
@@ -49,6 +65,17 @@ Internal event payloads contain IDs only, never raw PII/tokens.
 
 ## Error taxonomy
 `AUTH_REQUIRED`, `ORG_ACCESS_DENIED`, `PLAN_FEATURE_UNAVAILABLE`, `SEAT_LIMIT_REACHED`, `USAGE_LIMIT_REACHED`, `RUN_CONCURRENCY_LIMIT`, `TRIAL_EXPIRED`, `SUBSCRIPTION_PAST_DUE`, `BILLING_NOT_CONFIGURED`, `INVALID_WEBHOOK_SIGNATURE`, `PAYMENT_PENDING`, `AGENT_VERSION_MISSING`, `APPROVAL_EXPIRED`, `RATE_LIMITED`.
+
+Added in P1, because this taxonomy predates authentication and tenancy. Folding
+them into `AUTH_REQUIRED` or `ORG_ACCESS_DENIED` would make genuinely different
+failures indistinguishable to a client (ADR-0006):
+
+`MFA_REQUIRED`, `INVITATION_INVALID`, `ORG_SLUG_TAKEN`, `EMAIL_NOT_VERIFIED`, `STALE_ORG_CONTEXT`, `CSRF_INVALID`, `VALIDATION_FAILED`.
+
+`INVITATION_INVALID` is deliberately **one** code for every invitation failure —
+unknown token, expired, revoked, already used, or addressed to someone else.
+Distinguishing them would turn the accept endpoint into an oracle for
+enumerating tokens and discovering who was invited where.
 
 ## Example `POST /api/runs`
 ```json

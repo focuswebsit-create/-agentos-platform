@@ -77,3 +77,116 @@ Manual visual check: production server screenshots at 1440px and 375px, light an
 ### Recommendation — next PR (P1: Auth + tenancy + UI shell)
 Supabase Auth (email + magic link), `organizations`/`memberships`/`invitations`/`platform_admins` migrations with RLS and composite org FKs, org create/switch, role-based access, server-side session + membership guard on `/app/*`, replace the `ADMIN_SHELL_PREVIEW` gate with real platform-admin auth + MFA requirement, invitation seat checks, profile theme/language preference, public legal pages (privacy/terms) as drafts for legal review.
 **Gate:** two-org cross-tenant negative E2E, invitation seat checking, app loads at mobile widths, admin denied for non-admins.
+
+---
+
+# P1 — Authentication, tenancy, invitations, admin boundary
+
+**Branch:** `claude/agentos-p1-infrastructure-9gibn2` · **Date:** 2026-11-14
+**Commits:** `ae6e48a` (database foundation), `01cfb60` (application layer)
+
+## What works
+
+A person can sign up, confirm their email, sign in, create an organisation,
+invite colleagues by link, accept an invitation, change roles, remove members
+and switch workspace. `/admin` is gated by a real platform-admin check.
+
+## Architecture decisions (owner-approved)
+
+| Decision | Choice | ADR |
+|---|---|---|
+| RLS mechanism | `SECURITY DEFINER` helper + membership subquery; no `org_id` in the JWT, so revoking access takes effect immediately | — |
+| Active organisation | Server-side cookie; the cookie is a pointer, never authority | 0005 |
+| Roles | `owner` / `admin` / `member` / `viewer`; all consume a seat | 0006 |
+| Authentication | Email + password with confirmation; invitations by copy-link, no email provider | — |
+| Super Admin | Boundary in P1, dashboards in P6 | 0002 |
+| MFA | Enforced for platform admins; no customer UI | 0003 |
+
+## Commands and results
+
+```
+npm ci              exit 0   529 packages
+npm run lint        exit 0
+npm run typecheck   exit 0
+npm run format:check exit 0
+npm test            exit 0   123 passed (9 files)
+npm run build       exit 0   39 routes
+tests/db/rls-suite  exit 0   57 passed, 0 failed, 0 skipped
+npm audit --omit=dev         0 vulnerabilities
+```
+
+RLS wording, precisely: **the 57 checks ran against a local PostgreSQL 16 with
+a Supabase compatibility shim — not against Supabase.** They cover
+cross-tenant isolation, the role matrix, three privilege-escalation vectors,
+audit immutability and forgery, internal-function containment, the last-owner
+invariant and the seat quota, the last two under two genuinely concurrent
+transactions.
+
+## Defects found and fixed during P1
+
+1. **Audit forgery.** `log_audit()` was `SECURITY DEFINER` with free `org_id`,
+   `actor_type` and `action` parameters, granted to `authenticated`. Any
+   signed-in user could have written an audit record in **any** organisation
+   and impersonated `system` or `platform_admin`. Now internal only.
+2. **Tenant-size oracle.** `org_seats_taken()` took an arbitrary organisation
+   id and returned a headcount. Now internal, behind the membership-checked
+   `org_seat_usage()`.
+3. **Admin boundary could not read its own allowlist.** `BYPASSRLS` bypasses
+   row security but **not** table privileges, and `service_role` was never
+   granted `SELECT` on `platform_admins`. `/admin` would have failed closed for
+   real administrators. Fixed with an explicit grant.
+4. **Admin audit rows had no actor.** `log_audit()` derives the actor from
+   `auth.uid()`; the platform-admin module connects with the secret key and has
+   no JWT. Added `log_platform_audit()`, granted to `service_role` only.
+5. **Missing CSRF on organisation creation.** `POST /api/orgs` changed state
+   with no CSRF check, and the token cookie was only issued on `/app`, so
+   onboarding had neither. All six API routes now verify origin and a
+   double-submit token on every mutation.
+6. **Server code in the client bundle.** The tenancy barrel re-exported
+   `context.ts`, pulling `next/headers` into the browser and failing the
+   production build. Server-only modules are separated and marked with
+   `import "server-only"`.
+7. **A security check that never ran.** The pre-commit scanner piped gitleaks
+   into `tail`, so `$?` was always `tail`'s status and a real finding would
+   have been swallowed. Separately, `ss` is not installed in this image, so the
+   TCP-exposure check silently reported success. Both fixed; the TCP check now
+   reads `/proc/net/tcp` and fails closed.
+
+## Not verified — reported as such, never as passing
+
+| # | What | Why |
+|---|---|---|
+| 1 | JWT authenticity: signature, expiry, refresh rotation | the shim injects claims directly |
+| 2 | `aal2` follows a genuinely verified second factor | a GoTrue property |
+| 3 | GoTrue sign-up, sign-in, confirmation, recovery | no GoTrue locally |
+| 4 | Email delivery | no SMTP provider |
+| 5 | Real TOTP enrolment | needs a device and a live session |
+| 6 | PostgREST behaviour and schema cache | no PostgREST locally |
+| 7 | Two-organisation isolation end to end through the UI | needs real sessions |
+| 8 | Password policy, leaked-password protection | dashboard settings |
+
+`ROADMAP.md`'s P1 gate — "2-org cross-tenant negative E2E" — is met **at the
+database layer**, which is where a leak is a release blocker. The UI-level E2E
+needs items 3 and 7 and is the first task after the migrations are applied.
+
+## Blockers for the owner
+
+1. **Confirm the target project.** Nothing inside the container can prove the
+   `krys…` reference is `AgentOS-Development`. See `docs/SUPABASE_SETUP.md` §0.
+2. **Apply the five migrations** to Supabase Development — owner approval, not
+   done.
+3. **Create `SUPABASE_SECRET_KEY`.** Without it `/admin` fails closed.
+4. **Configure custom SMTP.** Sign-up cannot complete without it. Email
+   confirmation must not be disabled to work around this.
+5. **Insert the first `platform_admins` row** and enrol TOTP.
+6. **Choose an email provider** for invitations, or keep copy-link. Nothing is
+   sent today and the UI says so.
+7. **Legal:** privacy policy and terms before real sign-ups
+   (`SECURITY.md` 10, Amendment 13).
+
+## Recommended next PR
+
+UI-level two-organisation E2E against Supabase Development, once the
+migrations are applied: sign up → confirm → create organisation → invite →
+accept from a second account → verify the second account cannot read the
+first organisation. Then P2 (agents and templates) — not before.
