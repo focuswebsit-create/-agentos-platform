@@ -27,8 +27,8 @@ SDKs) · **BLOCKED** needs an owner action or credential · **NOT BUILT**.
 | 10 | Link knowledge to the agent | LOCAL | Selector in Agent Studio; executor retrieval tests |
 | 11 | Successful agent test | PASS-PREVIEW (owner, simulation) | MARKET draft test reached "הסתיים" with trace and usage |
 | 12 | Publish | PASS-PREVIEW (owner) | Published version visible |
-| 13 | Access through a channel | NOT BUILT | Web Chat / WhatsApp not built |
-| 14 | Review conversations and executions | PARTIAL | Runs list/detail with trace, sources, usage; no conversations (no channel) |
+| 13 | Access through a channel | LOCAL · BLOCKED (0024) | Web Chat built (`6cf7cc3`): DB group 20, unit `web-chat`, E2E framing/origin checks. WhatsApp not built (needs Meta credentials + approval) |
+| 14 | Review conversations and executions | LOCAL · BLOCKED (0024) | Conversations under Integrations with take over / reply / close; runs with trace, sources, usage |
 | 15 | Review usage and costs | LOCAL | Run usage panel, billing usage vs budget |
 | 16 | Configure an automation | NOT BUILT | Workflows / schedules not built |
 | 17 | Manage team permissions | LOCAL | Team screen, role changes; RLS groups 2–3 |
@@ -56,11 +56,11 @@ page to show the document under "מקורות". This proves the data path only.
 
 ## Go-Live checklist (all required)
 
-- [ ] Migration 0023 applied to Development and verified
+- [ ] `supabase/apply/04_incremental_0023_0024.sql` applied to Development and verified
 - [ ] Customer journey steps 1–20 PASS-PREVIEW with two organisations
 - [ ] Email delivery (SMTP) configured and verified
 - [ ] Payment provider chosen, sandbox checkout + signed webhooks verified, controlled live charge approved
-- [ ] Web Chat (and any channel sold) built and verified
+- [ ] Web Chat verified on the preview (widget enabled, embedded on a test https site, reply, handoff)
 - [ ] Approved real Claude smoke test passed
 - [ ] Security: no open Critical/High (currently none known); rate limiting on public endpoints
 - [ ] Legal review of `docs/legal/` drafts; privacy and terms published

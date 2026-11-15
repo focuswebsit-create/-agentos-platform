@@ -5,7 +5,7 @@ progressing, but payments, the hosted migrations 0019–0022, a verified preview
 run and a real-model test are all still open. This file never claims more than
 the evidence in `TEST_RESULTS.md` supports.
 
-Last updated: 2026-11-14 · last pushed commit: `11bf5c9`
+Last updated: 2026-11-15 · last pushed commit: `6cf7cc3`
 
 **Owner-verified on the preview (2026-11-14):** login, FOCUS dashboard, MARKET in Agent Studio, a simulation draft test reaching "הסתיים" with trace and usage, one knowledge document + chunk created, migrations 0019–0022 applied (10/10 objects present).
 
@@ -32,7 +32,8 @@ NOT TESTED = no evidence yet. FAIL = known broken.
 | 12 | Plan entitlements (budget, concurrency, lapsed) | LOCAL · BLOCKED (0020) | RLS group 16 |
 | 13 | Knowledge retrieval, org-isolated, injection-framed | LOCAL · storage PASS-PREVIEW | Document + chunk created on the preview; retrieval path verified locally incl. Hebrew prefixes; preview check steps in `P07_FINAL_ACCEPTANCE.md` |
 | 14 | Billing sandbox checkout + webhooks | BLOCKED | Payment provider not chosen (ADR-0013). Schema dedupe ready. |
-| 15 | Workflows / scheduled runs / web chat / WhatsApp | NOT STARTED | — |
+| 15 | Web Chat with handoff | LOCAL · BLOCKED (0024) | DB group 20 (16 checks), unit `web-chat`, E2E framing + origin |
+| 15b | Workflows / scheduled runs / WhatsApp | NOT STARTED | WhatsApp needs Meta Business credentials and owner approval |
 | 16 | Tools with human approval | NOT STARTED | Required before any outbound action exists |
 | 17 | Super Admin (orgs, usage, audit, templates, suspension) | LOCAL | RLS groups 8b, 13; unit `platform-admin-data`; needs a `platform_admins` row + TOTP to use |
 | 18 | CSRF on all mutation methods | PASS | unit `csrf-methods` (systemic route scan) |
@@ -40,7 +41,7 @@ NOT TESTED = no evidence yet. FAIL = known broken.
 | 20 | Vercel Preview deployment builds | PASS | GitHub commit statuses: agentos-demo "Deployment has completed" per commit |
 | 21 | Vercel Preview functional verification | BLOCKED | `*.vercel.app` refused by this container's network proxy |
 | 22 | Customer onboarding without developer help | NOT TESTED | Needs gates 7, 12–14 on the preview |
-| 23 | API rate limiting | NOT STARTED | Runs are bounded by budget, concurrency and auth; no per-IP limiter yet (residual risk R2) |
+| 23 | API rate limiting | PARTIAL | Public chat: DB-enforced per-IP, per-widget, per-conversation limits. Authenticated APIs: bounded by auth, budget and concurrency; no generic per-IP limiter (R2) |
 
 ## 2. Security findings
 

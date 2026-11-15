@@ -6,7 +6,7 @@ sections under **History** are append-only.
 
 **Last updated:** 2026-11-14
 **Branch:** `claude/agentos-p1-infrastructure-9gibn2` (never merged to `main`; no production deploy)
-**Last commit:** `11bf5c9` (settlement period fix 0023, Hebrew retrieval, sources) — gate matrix in `RELEASE_READINESS.md`, journey in `P07_FINAL_ACCEPTANCE.md`
+**Last commit:** `6cf7cc3` (Web Chat 0024) — gates in `RELEASE_READINESS.md`, journey in `P07_FINAL_ACCEPTANCE.md`
 
 ---
 
@@ -20,7 +20,7 @@ sections under **History** are append-only.
 | **P1** | Auth, organisations, roles, invitations, RLS, admin boundary | ✅ Code complete · RLS proven locally (192 checks) · ⚠️ GoTrue/PostgREST paths verified only by the owner's manual use of the preview |
 | **P2** | Agent Studio, versions, templates | 🟡 Drafts, publish, immutable versions, history, restore to draft, duplicate, business goals, **test the saved draft before publishing (0021)**, 4 starter templates, Super Admin template publishing. **Missing:** more domain templates |
 | **P3** | Runtime, real provider, usage ledger | 🟡 Runs with atomic claim, recovery kick and stale-run recovery, budget reservation, settlement, usage ledger, simulation provider, Anthropic provider (mock-tested only, gated by `AGENTOS_ENABLE_LIVE_AI`). **Missing:** durable execution (Inngest), tool calls, conversations/memory, streaming, live Anthropic verification |
-| **P4** | Teams, knowledge, approvals, channels, automations | 🟡 **Knowledge sources with org-isolated retrieval (0022)**. **Missing:** Web Chat, workflows/schedules, tools + approvals, handoff, WhatsApp |
+| **P4** | Teams, knowledge, approvals, channels, automations | 🟡 Knowledge (0022, Hebrew prefixes, sources), **Web Chat + handoff (0024)**. **Missing:** workflows/schedules, tools + approvals, WhatsApp |
 | **P5** | Subscriptions (sandbox only), quotas, invoices | 🟡 Plan catalog, subscriptions, webhook dedupe, entitlements enforced in `start_run`, billing screen (0020 not yet applied). **Missing:** payment provider, checkout, webhook processor, invoices |
 | **P6** | Super Admin | 🟡 Organisations, usage, audit log, templates, enforced suspension. **Missing:** incidents/alerts, live AAL2 verification |
 | **P7** | Security audit, E2E with test accounts, launch readiness | 🟡 Launch kit (`docs/business/LAUNCH_KIT_HE.md`), privacy/terms drafts for legal review (`docs/legal/`), `RELEASE_READINESS.md`. Audit and journey E2E not started |
@@ -139,24 +139,22 @@ at the network proxy. Commit build status is read from GitHub commit statuses.
 
 ## Next task
 
-1. Owner: apply `supabase/migrations/0023_settlement_period.sql` (no data
-   changes); run the "מגדלור סגול 47" simulation check in
-   `P07_FINAL_ACCEPTANCE.md`; choose a payment provider; approve or decline the
-   $0.05 Claude smoke test.
-2. P4 Web Chat — ADR first: per-agent publishable widget key, origin
-   allow-list, per-IP and per-agent rate limits, conversation tables with RLS,
-   budget from the owning org, human handoff state.
-3. Workflows / scheduled runs (needs a scheduler that runs on Preview: Vercel
-   Cron is Production-only).
-4. Tools registry + human approval on exact arguments (before any outbound
-   action, incl. WhatsApp).
+1. Owner: apply `supabase/apply/04_incremental_0023_0024.sql`; then on the
+   preview: Integrations → create a widget for MARKET → add an https test site
+   → enable → open the chat link → send a message (simulation reply) → take
+   over and reply from Integrations.
+2. Workflows and scheduled runs — needs a scheduler that runs on previews
+   (Vercel Cron is Production-only): ADR first.
+3. Tools registry + human approval on exact arguments.
+4. Payment provider integration once the provider is chosen.
 
 ### Resume checkpoint
 
-Branch `claude/agentos-p1-infrastructure-9gibn2` at `11bf5c9`, clean, pushed.
-Hosted Development has migrations 0001–0022 (owner-applied). 0023 is a file.
-Local: `/root/.agentos-rls-test/rls-cluster.sh start && npm run test:rls` (249).
-All gates green at `11bf5c9`.
+Branch `claude/agentos-p1-infrastructure-9gibn2` at `6cf7cc3`, pushed.
+Hosted Development: 0001–0022 (owner-applied). Files pending: 0023, 0024
+(bundled in `supabase/apply/04_incremental_0023_0024.sql`).
+Local: `/root/.agentos-rls-test/rls-cluster.sh start && npm run test:rls` (265).
+All gates green at `6cf7cc3`.
 
 ---
 

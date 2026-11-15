@@ -3,6 +3,14 @@
 Exact results per pushed milestone, newest first. "Local DB" means PostgreSQL 16
 with the Supabase compatibility shim in this container — not Supabase.
 
+## `6cf7cc3` — Web Chat with handoff (2026-11-15)
+
+lint 0 · typecheck 0 · format 0 · unit 30 files / 405 passed · build 0 · e2e 36 passed ·
+RLS 265 PASS (group 20: roles, disabled-by-default, token hash, per-IP / per-conversation
+limits, run reservation, handoff, human reply, cross-org) · secret scan findings=0.
+`04_incremental_0023_0024.sql` rehearsed on exactly 0001–0022: applied; second run refused,
+fingerprint unchanged; 265/265 on the result.
+
 ## `11bf5c9` — settlement period (0023), Hebrew retrieval, sources (2026-11-14)
 
 lint 0 · typecheck 0 · format 0 · unit 29 files / 388 passed · build 0 · e2e 34 passed ·
