@@ -288,10 +288,33 @@ test("agent, template and run routes are closed to an unauthenticated, CSRF-less
       data: { orgId: id, title: "t", sourceType: "paste", mimeType: "text/plain", content: "x" },
     }),
     request.delete(`/api/knowledge/documents/${id}`, { data: { orgId: id } }),
+    request.post(`/api/widgets`, { data: { orgId: id, agentId: id } }),
+    request.patch(`/api/widgets/${id}`, { data: { orgId: id, enabled: true } }),
+    request.post(`/api/conversations/${id}/status`, { data: { orgId: id, status: "handoff" } }),
+    request.post(`/api/conversations/${id}/reply`, { data: { orgId: id, content: "x" } }),
   ];
   for (const res of await Promise.all(calls)) {
     // 403 for the CSRF refusal, 401 if the session check answers first; never
     // 2xx, and never 500, which would mean the handler ran and then fell over.
     expect([401, 403]).toContain(res.status());
   }
+});
+
+test("only the hosted chat window may be framed; every other page refuses framing", async ({
+  request,
+}) => {
+  const home = await request.get("/");
+  expect(home.headers()["x-frame-options"]).toBe("DENY");
+
+  // No database here, so the widget is unknown: 404, and still no XFO on /chat.
+  const chat = await request.get("/chat/wk_abcdefghijklmnopqrstuvwxyz012345");
+  expect(chat.status()).toBe(404);
+  expect(chat.headers()["x-frame-options"]).toBeUndefined();
+});
+
+test("the public chat API refuses another website's browser origin", async ({ request }) => {
+  const res = await request.post("/api/chat/wk_abcdefghijklmnopqrstuvwxyz012345/conversations", {
+    headers: { origin: "https://evil.example" },
+  });
+  expect(res.status()).toBe(403);
 });

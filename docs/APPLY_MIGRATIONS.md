@@ -139,7 +139,16 @@ and `SUPABASE_SECRET_KEY`, which the executor uses to record the run. See
 
 ---
 
-## Next: 0023 (one file, already single)
+## Now: one file for 0023–0024
+
+`supabase/apply/04_incremental_0023_0024.sql` — for a database that has
+0001–0022 (Development, after the 03 file). One transaction: refuses unless
+0022 is present, refuses if 0024 is already there, rolls back if any expected
+object is missing or `anon` could execute a function. No data changes.
+Rehearsed on a local copy of exactly 0001–0022: applied, second run refused
+with an identical schema fingerprint, 265/265 database checks pass on the result.
+
+## 0023 alone (superseded by the file above)
 
 `supabase/migrations/0023_settlement_period.sql` — paste it whole into the SQL
 Editor and Run. It replaces `settle_run`, `cancel_run` and

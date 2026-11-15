@@ -3547,6 +3547,227 @@ try {
       "permission denied",
     );
   }
+
+  /* ---- 20. Web Chat (0024) ----------------------------------------- */
+  g = "20-web-chat";
+  {
+    const owner = await makeUser(m, `wc-owner-${tag}@example.test`);
+    const member = await makeUser(m, `wc-member-${tag}@example.test`);
+    const outsider = await makeUser(m, `wc-outsider-${tag}@example.test`);
+    const org = await makeOrg(m, `org-wc-${tag}`, owner, 5);
+    await addMember(m, org, member, "member");
+    await makeOrg(m, `org-wc-other-${tag}`, outsider, 5);
+
+    let agent;
+    await act(t, member, async () => {
+      agent = (await t.query(`select public.create_agent($1,'Chat agent',null) as id`, [org]))
+        .rows[0].id;
+    });
+    await m.query(
+      `update public.agent_versions set config_json=$2::jsonb where agent_id=$1 and published_at is null`,
+      [
+        agent,
+        JSON.stringify({
+          role: "נציג",
+          instructions: "ענה בקצרה ובנימוס.",
+          provider: "mock",
+          model: "mock:deterministic",
+          maxSpendUsdMicros: 200000,
+        }),
+      ],
+    );
+    await act(t, member, () => t.query(`select public.publish_agent_version($1)`, [agent]));
+
+    const key = `wk_${tag.replace(/[^A-Za-z0-9]/g, "")}abcdefghijklmnopqrst`;
+    await expectDenied(
+      g,
+      "a member cannot create a chat widget (owner/admin only)",
+      () =>
+        act(t, member, () =>
+          t.query(`select public.create_chat_widget($1,$2)`, [agent, `${key}m`]),
+        ),
+      "ORG_ACCESS_DENIED",
+    );
+    let widget;
+    await expectAllowed(g, "an owner creates a widget, disabled by default", async () => {
+      await act(t, owner, async () => {
+        widget = (await t.query(`select public.create_chat_widget($1,$2) as id`, [agent, key]))
+          .rows[0].id;
+      });
+      const r = await m.query(`select enabled from public.chat_widgets where id=$1`, [widget]);
+      if (r.rows[0].enabled !== false) throw new Error("created enabled");
+    });
+
+    const svc = async (sql, params) => {
+      await p.query("SET ROLE service_role");
+      try {
+        return await p.query(sql, params);
+      } finally {
+        await p.query("RESET ROLE").catch(() => {});
+      }
+    };
+    const tok = (s) => sha256(`${s}-${tag}`);
+    const ip = sha256(`ip-${tag}`);
+
+    await expectDenied(
+      g,
+      "a disabled widget accepts no conversation",
+      () => svc(`select public.open_conversation($1,$2,$3)`, [key, tok("v0"), ip]),
+      "WIDGET_NOT_AVAILABLE",
+    );
+    await expectRows(
+      g,
+      "a member cannot enable the widget (0 rows)",
+      () =>
+        act(t, member, () =>
+          t.query(`update public.chat_widgets set enabled=true where id=$1 returning id`, [widget]),
+        ),
+      0,
+    );
+    await act(t, owner, () =>
+      t.query(`update public.chat_widgets set enabled=true where id=$1`, [widget]),
+    );
+
+    await expectDenied(
+      g,
+      "no customer role can open a conversation directly",
+      () =>
+        act(t, owner, () =>
+          t.query(`select public.open_conversation($1,$2,$3)`, [key, tok("x"), ip]),
+        ),
+      "permission denied",
+    );
+
+    let conv;
+    await expectAllowed(g, "the server opens a conversation for an enabled widget", async () => {
+      conv = (await svc(`select public.open_conversation($1,$2,$3) as o`, [key, tok("v1"), ip]))
+        .rows[0].o.conversation_id;
+    });
+
+    {
+      const r = (
+        await svc(
+          `select public.post_visitor_message($1,$2,'שלום','{"prompt":"שלום"}'::jsonb) as o`,
+          [key, tok("v1")],
+        )
+      ).rows[0].o;
+      const run = await m.query(
+        `select r.status, r.initiator_user_id, (select status from public.usage_reservations where run_id=r.id) as res
+         from public.runs r where r.id=$1`,
+        [r.run_id],
+      );
+      const row = run.rows[0];
+      if (
+        r.run_id &&
+        row?.status === "queued" &&
+        row.res === "active" &&
+        row.initiator_user_id === null
+      )
+        ok(g, "a visitor message dispatches a reserved run of the published version");
+      else
+        bad(
+          g,
+          "a visitor message dispatches a reserved run of the published version",
+          JSON.stringify({ r, row }),
+        );
+    }
+
+    await expectDenied(
+      g,
+      "a wrong visitor token cannot post into a conversation",
+      () =>
+        svc(`select public.post_visitor_message($1,$2,'x','{}'::jsonb)`, [key, tok("intruder")]),
+      "CONVERSATION_NOT_FOUND",
+    );
+
+    /* handoff */
+    await expectDenied(
+      g,
+      "a person cannot reply before taking over",
+      () => act(t, member, () => t.query(`select public.post_human_reply($1,'היי')`, [conv])),
+      "VALIDATION_FAILED",
+    );
+    await act(t, member, () =>
+      t.query(`select public.set_conversation_status($1,'handoff')`, [conv]),
+    );
+    {
+      const r = (
+        await svc(
+          `select public.post_visitor_message($1,$2,'עוד שאלה','{"prompt":"x"}'::jsonb) as o`,
+          [key, tok("v1")],
+        )
+      ).rows[0].o;
+      if (r.handoff === true && r.run_id === null)
+        ok(g, "after handoff, visitor messages dispatch no run");
+      else bad(g, "after handoff, visitor messages dispatch no run", JSON.stringify(r));
+    }
+    await expectAllowed(g, "after handoff a member replies as a person", () =>
+      act(t, member, () => t.query(`select public.post_human_reply($1,'נציג כאן')`, [conv])),
+    );
+
+    /* rate limits */
+    await m.query(`update public.chat_widgets set conversation_message_limit=3 where id=$1`, [
+      widget,
+    ]);
+    await expectDenied(
+      g,
+      "the per-conversation visitor message limit is enforced",
+      async () => {
+        for (let i = 0; i < 3; i++) {
+          await svc(`select public.post_visitor_message($1,$2,'m','{}'::jsonb)`, [key, tok("v1")]);
+        }
+      },
+      "RATE_LIMITED",
+    );
+    await expectDenied(
+      g,
+      "more than 5 new conversations per IP per hour are refused",
+      async () => {
+        for (let i = 2; i < 8; i++) {
+          await svc(`select public.open_conversation($1,$2,$3)`, [key, tok(`v${i}`), ip]);
+        }
+      },
+      "RATE_LIMITED",
+    );
+
+    /* isolation */
+    await expectRows(
+      g,
+      "another org sees none of the widgets, conversations or messages",
+      () =>
+        act(t, outsider, () =>
+          t.query(
+            `select id from public.chat_widgets where id=$1
+             union all select id from public.conversations where id=$2
+             union all select id from public.conversation_messages where conversation_id=$2`,
+            [widget, conv],
+          ),
+        ),
+      0,
+    );
+    await expectRows(
+      g,
+      "the visitor token is stored only as a hash",
+      () =>
+        m.query(
+          `select 1 from public.conversations where id=$1 and length(visitor_token_hash)=32`,
+          [conv],
+        ),
+      1,
+    );
+    await expectDenied(
+      g,
+      "a customer cannot insert messages directly",
+      () =>
+        act(t, owner, () =>
+          t.query(
+            `insert into public.conversation_messages (org_id, conversation_id, role, content) values ($1,$2,'agent','x')`,
+            [org, conv],
+          ),
+        ),
+      "permission denied",
+    );
+  }
 } finally {
   await m.end().catch(() => {});
   await t.end().catch(() => {});

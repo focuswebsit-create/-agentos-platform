@@ -115,3 +115,32 @@ describe("the incremental file 0019-0022 (for a database that has 0001-0018)", (
     expect(incremental).not.toMatch(/[a-z0-9]{20}\.supabase\.co/);
   });
 });
+
+describe("the incremental file 0023-0024 (for a database that has 0001-0022)", () => {
+  const FILE = "supabase/apply/04_incremental_0023_0024.sql";
+  const incremental = readFileSync(FILE, "utf8");
+
+  it("is byte-identical to a fresh build from the current migrations", () => {
+    const scratch = mkdtempSync(join(tmpdir(), "incremental2-"));
+    execFileSync("bash", [
+      "-c",
+      `mkdir -p "${scratch}/supabase/apply" "${scratch}/scripts" &&
+      cp -r supabase/migrations "${scratch}/supabase/" &&
+      cp scripts/build-incremental-0023-0024.sh "${scratch}/scripts/" &&
+      bash "${scratch}/scripts/build-incremental-0023-0024.sh" >/dev/null`,
+    ]);
+    expect(readFileSync(join(scratch, FILE), "utf8") === incremental, "stale").toBe(true);
+  });
+
+  it("contains exactly 0023-0024, is one guarded transaction, and carries no credential", () => {
+    expect(incremental.indexOf("-- >>> 0023_")).toBeGreaterThan(-1);
+    expect(incremental.indexOf("-- >>> 0024_")).toBeGreaterThan(
+      incremental.indexOf("-- >>> 0023_"),
+    );
+    expect(incremental).not.toContain("-- >>> 0022_");
+    expect(incremental.match(/^begin;$/gm)).toHaveLength(1);
+    expect(incremental.match(/^commit;$/gm)).toHaveLength(1);
+    expect(incremental).toContain("post-check: anon can execute");
+    expect(incremental).not.toMatch(/sb_secret_[A-Za-z0-9]|[a-z0-9]{20}\.supabase\.co/);
+  });
+});

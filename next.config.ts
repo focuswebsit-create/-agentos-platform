@@ -1,11 +1,14 @@
 import type { NextConfig } from "next";
 
-const securityHeaders = [
+const baseHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
-  { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
 ];
+
+// Everything is unframeable except the hosted chat window, whose route sets
+// its own CSP frame-ancestors from the widget's allowed origins.
+const securityHeaders = [...baseHeaders, { key: "X-Frame-Options", value: "DENY" }];
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
@@ -21,7 +24,10 @@ const nextConfig: NextConfig = {
     },
   },
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    return [
+      { source: "/((?!chat/).*)", headers: securityHeaders },
+      { source: "/chat/:path*", headers: baseHeaders },
+    ];
   },
 };
 
